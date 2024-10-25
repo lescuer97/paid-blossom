@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"log"
 	"os"
 	"ratasker/external/blossom"
@@ -59,8 +58,6 @@ func main() {
 			log.Panicf(`sqlite.GetBlob(hash) %w`, err)
 		}
 
-		fmt.Printf("\n blob %+v\n", blob)
-
 		fileBytes, err := os.ReadFile(blob.Path)
 		if err != nil {
 			log.Panicf(`os.ReadFile(blob.Path) %w`, err)
@@ -78,20 +75,13 @@ func main() {
 
 	r.PUT("/upload", func(c *gin.Context) {
 		buf := new(bytes.Buffer)
-		amount, err := buf.ReadFrom(c.Request.Body)
-		fmt.Printf("amoutn %v: ", amount)
+		_, err := buf.ReadFrom(c.Request.Body)
 		if err != nil {
 			log.Panic(`buf.ReadFrom(c.Request.Body) %w`, err)
 		}
 
 		hash := sha256.Sum256(buf.Bytes())
 		hashHex := hex.EncodeToString(hash[:])
-
-		fmt.Printf("\n len buf %v\n : ", buf.Len())
-		// fmt.Printf("\n endpoint %v\n : ", buf.Len())
-		fmt.Printf("\nlen bytes %v\n: ", len(buf.Bytes()))
-		fmt.Println("hash: ", hash)
-		fmt.Println("hashHex: ", hashHex)
 
 		blob := blossom.Blob{
 			Data: buf.Bytes(),
@@ -118,6 +108,6 @@ func main() {
 
 	})
 
-	log.Println("Nutmix started in port 8080")
-	r.Run(":8080")
+	log.Println("ratasker started in port 8070")
+	r.Run(":8070")
 }
