@@ -11,9 +11,11 @@ import (
 	"ratasker/internal/database"
 	"ratasker/internal/utils"
 	"time"
+
+	"github.com/elnosh/gonuts/cashu"
+	w "github.com/elnosh/gonuts/wallet"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-    "github.com/elnosh/gonuts/wallet"
 )
 
 var (
@@ -27,7 +29,7 @@ func main() {
 	defer sqlite.Db.Close()
 
 	if err != nil {
-		log.Panic(`database.DatabaseSetup(ctx, "migrations"). %wa`, err)
+		log.Panicf(`database.DatabaseSetup(ctx, "migrations"). %w`, err)
 	}
 
 	r := gin.Default()
@@ -35,19 +37,61 @@ func main() {
 
 	string, err := utils.GetRastaskerHomeDirectory()
 	if err != nil {
-		log.Panic(`utils.GetRastaskerHomeDirectory(). %wa`, err)
+		log.Panicf(`utils.GetRastaskerHomeDirectory(). %w`, err)
 	}
 
 	pathToData := string + "/" + "data"
 
 	err = utils.MakeSureFilePathExists(pathToData, "")
 	if err != nil {
-		log.Panic(`utils.MakeSureFilePathExists(pathToData, ""). %wa`, err)
+		log.Panicf(`utils.MakeSureFilePathExists(pathToData, ""). %w`, err)
+	}
+
+	pathToCashu := string + "/" + "cashu"
+
+	err = utils.MakeSureFilePathExists(pathToCashu, "")
+	if err != nil {
+		log.Panicf(`utils.MakeSureFilePathExists(pathToData, ""). %w`, err)
+	}
+
+	// Setup wallet
+	config := w.Config{
+		WalletPath:     pathToCashu,
+		CurrentMintURL: "http://localhost:8080",
+	}
+	wallet, err := w.LoadWallet(config)
+	if err != nil {
+		log.Panicf(`w.LoadWallet(config). %wa`, err)
 	}
 
 	r.GET("/:sha", func(c *gin.Context) {
 		sha := c.Param("sha")
 
+		// check for 50 sats payment
+		cashu_header := c.GetHeader("cashu")
+
+		if cashu_header == "" {
+			c.JSON(402, "payment required")
+			return
+
+		}
+
+		token, err := cashu.DecodeToken(cashu_header)
+
+		if err != nil {
+			c.JSON(402, "payment required")
+			return
+		}
+
+		balance, err := wallet.Receive(*token, false)
+		if err != nil {
+			c.JSON(402, "payment required")
+			return
+		}
+
+		log.Printf("\n Balance: %v \n", balance)
+
+		// try to get blob
 		hash, err := hex.DecodeString(sha)
 		if err != nil {
 			log.Panicf(`hex.DecodeString(sha) %w`, err)
