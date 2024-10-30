@@ -39,11 +39,11 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
 
 		// check for 50 sats payment
 		cashu_header := c.GetHeader(xcashu.Xcashu)
-
 		if cashu_header == "" {
 			c.JSON(402, nil)
 			return
 		}
+
 		err = xcashu.VerifyTokenIsValid(cashu_header, amountToPay, wallet)
 		if err != nil {
 			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %w`, err)
