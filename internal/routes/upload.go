@@ -61,7 +61,9 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 
 		_, err := buf.ReadFrom(c.Request.Body)
 		if err != nil {
-			log.Panic(`buf.ReadFrom(c.Request.Body) %w`, err)
+			log.Printf("buf.ReadFrom(c.Request.Body) %+v", err)
+			c.JSON(500, "Somethig went wrong")
+			return
 		}
 
 		hash := sha256.Sum256(buf.Bytes())
@@ -70,7 +72,10 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 		_, err = sqlite.GetBlobLength(hash[:])
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("Chunk already exists %x", hash[:])
-			c.JSON(204, "Chunk already exists")
+			type Error struct {
+				Error string
+			}
+			c.JSON(201, Error{Error: "chuck exists"})
 			return
 
 		}

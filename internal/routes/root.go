@@ -13,7 +13,7 @@ import (
 	"ratasker/internal/database"
 )
 
-const SatPerMegaByteDownload = 2
+const SatPerMegaByteDownload = 1
 
 func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
 	r.GET("/:sha", func(c *gin.Context) {
@@ -37,17 +37,36 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
 
 		amountToPay := xcashu.QuoteAmountToPay(uint64(blob.Data.Size), SatPerMegaByteDownload)
 
+		paymentResponse := xcashu.PaymentQuoteResponse{
+			Amount: amountToPay,
+			Unit:   xcashu.Sat,
+			Mints:  []string{wallet.CurrentMint()},
+			Pubkey: hex.EncodeToString(wallet.GetReceivePubkey().SerializeCompressed()),
+		}
+
+		jsonBytes, err := json.Marshal(paymentResponse)
+		if err != nil {
+			c.JSON(500, "Error request")
+			return
+		}
+
+		// In case you need to 402
+		encodedPayReq := base64.URLEncoding.EncodeToString(jsonBytes)
+
 		// check for 50 sats payment
 		cashu_header := c.GetHeader(xcashu.Xcashu)
 		if cashu_header == "" {
-			c.JSON(402, nil)
+			log.Println("cashu header not available")
+			c.Header(xcashu.Xcashu, encodedPayReq)
+			c.JSON(402, "payment required")
 			return
 		}
 
 		err = xcashu.VerifyTokenIsValid(cashu_header, amountToPay, wallet)
 		if err != nil {
 			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %w`, err)
-			c.JSON(402, nil)
+			c.Header(xcashu.Xcashu, encodedPayReq)
+			c.JSON(402, "payment required")
 			return
 		}
 
