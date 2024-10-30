@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/elnosh/gonuts/cashu"
 	w "github.com/elnosh/gonuts/wallet"
 	"github.com/gin-gonic/gin"
 )
@@ -77,8 +76,6 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 		}
 
 		// Check ecash amount correct
-		log.Println("QuoteReq: ", quoteReq)
-
 		contentLenght, err := strconv.ParseInt(quoteReq, 10, 64)
 		if err != nil {
 			c.JSON(400, "Malformed request")
@@ -99,41 +96,15 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 			return
 		}
 
+		// In case you need to 402
 		encodedPayReq := base64.URLEncoding.EncodeToString(jsonBytes)
 
 		cashu_header := c.GetHeader(xcashu.Xcashu)
 
-		if cashu_header == "" {
-			log.Printf("No cashu header. %+v", cashu_header)
-			c.JSON(402, nil)
-			c.Header(xcashu.Xcashu, encodedPayReq)
-			return
-		}
-		log.Printf("Heeader %v", cashu_header)
-
-		token, err := cashu.DecodeToken(cashu_header)
-
+		err = xcashu.VerifyTokenIsValid(cashu_header, amountToPay, wallet)
 		if err != nil {
-			log.Printf("Error decoding token. %+v", err)
-			log.Printf("Tokenn that failed. %+v", cashu_header)
-			c.JSON(402, nil)
-			c.Header(xcashu.Xcashu, encodedPayReq)
-			return
-		}
-
-		if token.Amount() < amountToPay {
-			log.Printf("\n Not enough amounts. Need %v. Have: %v  \n", amountToPay, token.Amount())
-			c.JSON(402, "Too few sats")
-			c.Header(xcashu.Xcashu, encodedPayReq)
-			return
-		}
-		// TODO - Check if is the correct mint
-		// TODO - Check if it is locked to the pubkey of the wallet
-		log.Printf("Token %v", token)
-
-		_, err = wallet.Receive(token, false)
-		if err != nil {
-			c.JSON(402, "payment required")
+			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %w`, err)
+			c.JSON(402, encodedPayReq)
 			return
 		}
 
@@ -153,13 +124,10 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 			Data:      blob,
 		}
 
-		log.Println("starting to write to file system")
-
 		err = os.WriteFile(storedBlob.Path, buf.Bytes(), 0764)
 		if err != nil {
 			log.Panic(`os.WriteFile(pathToData %w`, err)
 		}
-		log.Println("Writing to db")
 
 		err = sqlite.AddBlob(storedBlob)
 		if err != nil {

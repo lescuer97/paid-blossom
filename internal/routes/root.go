@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/elnosh/gonuts/cashu"
 	w "github.com/elnosh/gonuts/wallet"
 	"github.com/gin-gonic/gin"
 	"log"
@@ -45,25 +44,10 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
 			c.JSON(402, nil)
 			return
 		}
-
-		token, err := cashu.DecodeToken(cashu_header)
-
+		err = xcashu.VerifyTokenIsValid(cashu_header, amountToPay, wallet)
 		if err != nil {
+			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %w`, err)
 			c.JSON(402, nil)
-			return
-		}
-
-		if token.Amount() < amountToPay {
-			c.JSON(402, "Too few sats")
-			return
-		}
-
-		// TODO - Check if is the correct mint
-		// TODO - Check if it is locked to the pubkey of the wallet
-
-		_, err = wallet.Receive(token, false)
-		if err != nil {
-			c.JSON(402, "payment required")
 			return
 		}
 
