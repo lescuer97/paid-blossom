@@ -50,6 +50,23 @@ func (sq SqliteDB) GetBlob(hash []byte) (blossom.DBBlobData, error) {
 	return blobData, nil
 
 }
+func (sq SqliteDB) GetBlobLength(hash []byte) (uint64, error) {
+	var length uint64 = 0
+
+	stmt, err := sq.Db.Prepare("SELECT  size FROM blobs WHERE sha256 = ?")
+	if err != nil {
+		return length, fmt.Errorf("sq.Db.Prepare(). %w", err)
+	}
+
+	// Create a record to hold the result
+	err = stmt.QueryRow(hash).Scan(&length)
+	if err != nil {
+		return length, fmt.Errorf("stmt.QueryRow(hash).Scan %w", err)
+	}
+
+	return length, nil
+
+}
 
 func DatabaseSetup(ctx context.Context, migrationDir string) (SqliteDB, error) {
 	var sqlitedb SqliteDB
