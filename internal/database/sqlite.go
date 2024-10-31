@@ -24,11 +24,10 @@ func (sq SqliteDB) AddBlob(data blossom.DBBlobData) error {
 	}
 	defer stmt.Close()
 
-	res, err := stmt.Exec(data.Sha256, data.Data.Size, data.Path, data.CreatedAt)
+	_, err = stmt.Exec(data.Sha256, data.Data.Size, data.Path, data.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("stmt.Exec(data.Data.Sha256, data.Data.Size. %w", err)
 	}
-	fmt.Printf("res: %+v", res)
 	return nil
 
 }

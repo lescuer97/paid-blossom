@@ -14,9 +14,9 @@ type DBBlobData struct {
 }
 
 type BlobDescriptor struct {
-	Url      string
-	Sha256   string
-	Size     uint64
-	Type     string
-	Uploaded uint64
+	Url      string `json:"url"`
+	Sha256   string `json:"sha256"`
+	Size     uint64 `json:"size"`
+	Type     string `json:"type"`
+	Uploaded uint64 `json:"uploaded"`
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"ratasker/external/nostr"
 	"ratasker/internal/database"
 	"ratasker/internal/routes"
 	"ratasker/internal/utils"
@@ -61,7 +62,7 @@ func main() {
 	// Setup wallet
 	config := w.Config{
 		WalletPath:     pathToCashu,
-		CurrentMintURL: "https://nofees.testnut.cashu.space",
+		CurrentMintURL: "https://mutinynet.nutmix.cash",
 	}
 
 	wallet, err := w.LoadWallet(config)
@@ -78,8 +79,30 @@ func main() {
 	}))
 
 	routes.RootRoutes(r, wallet, sqlite)
+
 	routes.UploadRoutes(r, wallet, sqlite, pathToData)
 
 	log.Println("ratasker started in port 8070")
 	r.Run("0.0.0.0:8070")
+}
+
+func NostrAutMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHerader := c.GetHeader("Authorization")
+
+		event, err := nostr.ParseNostrHeader(authHerader)
+		if err != nil {
+			c.JSON(401, nostr.NotifMessage{Message: "Missing auth event"})
+			return
+		}
+
+		err = nostr.ValidateAuthEvent(event)
+		if err != nil {
+			c.JSON(401, nostr.NotifMessage{Message: "Invalid nostr event"})
+			return
+		}
+
+		c.Set(utils.NOSTRAUTH, event)
+		c.Next()
+	}
 }
