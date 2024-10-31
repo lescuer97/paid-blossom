@@ -8,16 +8,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	w "github.com/elnosh/gonuts/wallet"
+	"github.com/gin-gonic/gin"
+	n "github.com/nbd-wtf/go-nostr"
 	"log"
 	"os"
 	"ratasker/external/blossom"
+	"ratasker/external/nostr"
 	"ratasker/external/xcashu"
 	"ratasker/internal/database"
+	"ratasker/internal/utils"
 	"strconv"
 	"time"
-
-	w "github.com/elnosh/gonuts/wallet"
-	"github.com/gin-gonic/gin"
 )
 
 const SatPerMegaByteUpload = 1
@@ -25,7 +27,6 @@ const SatPerMegaByteUpload = 1
 func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pathToData string) {
 	r.HEAD("/upload", func(c *gin.Context) {
 		quoteReq := c.GetHeader(xcashu.XContentLength)
-		log.Println("QuoteReq: ", quoteReq)
 
 		contentLenght, err := strconv.ParseInt(quoteReq, 10, 64)
 		if err != nil {
@@ -55,6 +56,15 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 	})
 
 	r.PUT("/upload", func(c *gin.Context) {
+		event, exists := c.Get(utils.NOSTRAUTH)
+		if !exists {
+			c.JSON(401, nostr.NotifMessage{
+				Message: "No notifications message",
+			})
+		}
+		// There is some trust that the auth middleware will pass the event
+		nostrEvent := event.(n.Event)
+
 		quoteReq := c.GetHeader("content-length")
 
 		buf := new(bytes.Buffer)
@@ -127,6 +137,7 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 			Sha256:    hash[:],
 			CreatedAt: uint64(time.Now().Unix()),
 			Data:      blob,
+			Pubkey:    nostrEvent.PubKey,
 		}
 
 		err = os.WriteFile(storedBlob.Path, buf.Bytes(), 0764)
@@ -138,7 +149,14 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 		if err != nil {
 			log.Panic(`sqlite.AddBlob()`, err)
 		}
-		c.JSON(200, "yeyyy")
+
+		blobDescriptor := blossom.BlobDescriptor{
+			Url:      os.Getenv(utils.DOMAIN) + "/" + hashHex,
+			Sha256:   hashHex,
+			Size:     storedBlob.Data.Size,
+			Uploaded: storedBlob.Pubkey,
+		}
+		c.JSON(200, blobDescriptor)
 
 	})
 }

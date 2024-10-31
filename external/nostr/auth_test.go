@@ -15,9 +15,9 @@ func TestParsingHeaderSuccessful(t *testing.T) {
 
 	err = ValidateAuthEvent(event)
 	if err != nil {
-        if !errors.Is(err,ErrEventExpired) {
-		    t.Errorf("Validation failed. %+v", err)
-        }
+		if !errors.Is(err, ErrEventExpired) {
+			t.Errorf("Validation failed. %+v", err)
+		}
 
 	}
 

@@ -8,6 +8,7 @@ require (
 	github.com/elnosh/gonuts v0.2.1-0.20241028160846-2a875c2e3182
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-gonic/gin v1.10.0
+	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/nbd-wtf/go-nostr v0.35.0
 	github.com/pressly/goose/v3 v3.22.1

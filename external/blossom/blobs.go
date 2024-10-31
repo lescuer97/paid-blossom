@@ -11,6 +11,7 @@ type DBBlobData struct {
 	Sha256    []byte
 	CreatedAt uint64 `db:"created_at"`
 	Data      Blob
+	Pubkey    string
 }
 
 type BlobDescriptor struct {
@@ -18,5 +19,5 @@ type BlobDescriptor struct {
 	Sha256   string `json:"sha256"`
 	Size     uint64 `json:"size"`
 	Type     string `json:"type"`
-	Uploaded uint64 `json:"uploaded"`
+	Uploaded string `json:"uploaded"`
 }

@@ -18,13 +18,13 @@ type SqliteDB struct {
 
 func (sq SqliteDB) AddBlob(data blossom.DBBlobData) error {
 
-	stmt, err := sq.Db.Prepare("INSERT INTO blobs (sha256, size, path, created_at) values (?, ?, ?, ?)")
+	stmt, err := sq.Db.Prepare("INSERT INTO blobs (sha256, size, path, created_at, pubkey) values (?, ?, ?, ?, ?)")
 	if err != nil {
 		return fmt.Errorf("sq.Db.Prepare(). %w", err)
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(data.Sha256, data.Data.Size, data.Path, data.CreatedAt)
+	_, err = stmt.Exec(data.Sha256, data.Data.Size, data.Path, data.CreatedAt, data.Pubkey)
 	if err != nil {
 		return fmt.Errorf("stmt.Exec(data.Data.Sha256, data.Data.Size. %w", err)
 	}
@@ -35,13 +35,13 @@ func (sq SqliteDB) AddBlob(data blossom.DBBlobData) error {
 func (sq SqliteDB) GetBlob(hash []byte) (blossom.DBBlobData, error) {
 	blobData := blossom.DBBlobData{}
 
-	stmt, err := sq.Db.Prepare("SELECT sha256, size, path, created_at FROM blobs WHERE sha256 = ?")
+	stmt, err := sq.Db.Prepare("SELECT sha256, size, path, created_at, pubkey FROM blobs WHERE sha256 = ?")
 	if err != nil {
 		return blobData, fmt.Errorf("sq.Db.Prepare(). %w", err)
 	}
 
 	// Create a record to hold the result
-	err = stmt.QueryRow(hash).Scan(&blobData.Sha256, &blobData.Data.Size, &blobData.Path, &blobData.CreatedAt)
+	err = stmt.QueryRow(hash).Scan(&blobData.Sha256, &blobData.Data.Size, &blobData.Path, &blobData.CreatedAt, &blobData.Pubkey)
 	if err != nil {
 		return blobData, fmt.Errorf("stmt.QueryRow(hash).Scan %w", err)
 	}

@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	n "github.com/nbd-wtf/go-nostr"
 	"strconv"
 	"strings"
 	"time"
-	n "github.com/nbd-wtf/go-nostr"
 )
 
 const HeaderScheme = "Nostr"

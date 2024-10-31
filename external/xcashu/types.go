@@ -60,6 +60,8 @@ func VerifyTokenIsValid(tokenHeader string, amountToPay uint64, wallet *w.Wallet
 	if !slices.Contains(wallet.TrustedMints(), token.Mint()) {
 		return ErrNotTrustedMint
 	}
+
+	fmt.Printf("\n Token: %+v", token)
 	// TODO - Check if it is locked to the pubkey of the wallet
 
 	_, err = wallet.Receive(token, false)
