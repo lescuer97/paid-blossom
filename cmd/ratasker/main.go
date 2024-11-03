@@ -3,9 +3,14 @@ package main
 import (
 	"context"
 	"log"
+	"os"
+	"ratasker/external/nostr"
 	"ratasker/internal/database"
 	"ratasker/internal/routes"
 	"ratasker/internal/utils"
+	"strings"
+
+	"github.com/joho/godotenv"
 
 	w "github.com/elnosh/gonuts/wallet"
 	"github.com/gin-contrib/cors"
@@ -29,6 +34,11 @@ func CORSMiddleware() gin.HandlerFunc {
 
 func main() {
 	ctx := context.Background()
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Something happened while loading the env file")
+	}
 
 	sqlite, err := database.DatabaseSetup(ctx, "migrations")
 	defer sqlite.Db.Close()
@@ -61,7 +71,7 @@ func main() {
 	// Setup wallet
 	config := w.Config{
 		WalletPath:     pathToCashu,
-		CurrentMintURL: "https://nofees.testnut.cashu.space",
+		CurrentMintURL: "https://mutinynet.nutmix.cash",
 	}
 
 	wallet, err := w.LoadWallet(config)
@@ -82,4 +92,33 @@ func main() {
 
 	log.Println("ratasker started in port 8070")
 	r.Run("0.0.0.0:8070")
+}
+
+func NostrAutMiddleware() gin.HandlerFunc {
+	authorizedKeys := os.Getenv("AUTHORIZED_KEYS")
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+
+		event, err := nostr.ParseNostrHeader(authHeader)
+		if err != nil {
+			c.JSON(401, nostr.NotifMessage{Message: "Missing auth event"})
+			return
+		}
+
+		if authorizedKeys != "" {
+			if strings.Contains(authHeader, event.PubKey) {
+				c.JSON(401, nostr.NotifMessage{Message: "unauthorized"})
+
+			}
+		}
+
+		err = nostr.ValidateAuthEvent(event)
+		if err != nil {
+			c.JSON(401, nostr.NotifMessage{Message: "Invalid nostr event"})
+			return
+		}
+
+		c.Set(utils.NOSTRAUTH, event)
+		c.Next()
+	}
 }

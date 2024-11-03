@@ -8,28 +8,42 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	w "github.com/elnosh/gonuts/wallet"
+	"github.com/gin-gonic/gin"
 	"log"
 	"os"
 	"ratasker/external/blossom"
+	n "ratasker/external/nostr"
 	"ratasker/external/xcashu"
 	"ratasker/internal/database"
+	"ratasker/internal/utils"
 	"strconv"
 	"time"
-
-	w "github.com/elnosh/gonuts/wallet"
-	"github.com/gin-gonic/gin"
 )
 
 const SatPerMegaByteUpload = 1
 
 func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pathToData string) {
 	r.HEAD("/upload", func(c *gin.Context) {
-		quoteReq := c.GetHeader(xcashu.XContentLength)
-		log.Println("QuoteReq: ", quoteReq)
+		sha256Header := c.GetHeader(blossom.XSHA256)
+		hash, err := hex.DecodeString(sha256Header)
+		if err != nil {
+			c.JSON(400, "No X-SHA-256 Header available")
+			return
+		}
 
+		_, err = sqlite.GetBlobLength(hash)
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("Chunk already exists %x", hash[:])
+			c.JSON(201, n.NotifMessage{Message: "chuck exists"})
+			return
+
+		}
+
+		quoteReq := c.GetHeader(blossom.XContentLength)
 		contentLenght, err := strconv.ParseInt(quoteReq, 10, 64)
 		if err != nil {
-			c.JSON(400, "Malformed request")
+			c.JSON(400, "No X-Content-Length Header available")
 			return
 		}
 
@@ -40,7 +54,6 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 			Mints:  []string{wallet.CurrentMint()},
 			Pubkey: hex.EncodeToString(wallet.GetReceivePubkey().SerializeCompressed()),
 		}
-
 		jsonBytes, err := json.Marshal(paymentResponse)
 		if err != nil {
 			c.JSON(500, "Error request")
@@ -61,7 +74,9 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 
 		_, err := buf.ReadFrom(c.Request.Body)
 		if err != nil {
-			log.Panic(`buf.ReadFrom(c.Request.Body) %w`, err)
+			log.Printf("buf.ReadFrom(c.Request.Body) %+v", err)
+			c.JSON(500, "Somethig went wrong")
+			return
 		}
 
 		hash := sha256.Sum256(buf.Bytes())
@@ -70,7 +85,10 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 		_, err = sqlite.GetBlobLength(hash[:])
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("Chunk already exists %x", hash[:])
-			c.JSON(204, "Chunk already exists")
+			type Error struct {
+				Error string
+			}
+			c.JSON(201, Error{Error: "chuck exists"})
 			return
 
 		}
@@ -122,6 +140,7 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 			Sha256:    hash[:],
 			CreatedAt: uint64(time.Now().Unix()),
 			Data:      blob,
+			Pubkey:    "",
 		}
 
 		err = os.WriteFile(storedBlob.Path, buf.Bytes(), 0764)
@@ -133,7 +152,14 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 		if err != nil {
 			log.Panic(`sqlite.AddBlob()`, err)
 		}
-		c.JSON(200, "yeyyy")
+
+		blobDescriptor := blossom.BlobDescriptor{
+			Url:      os.Getenv(utils.DOMAIN) + "/" + hashHex,
+			Sha256:   hashHex,
+			Size:     storedBlob.Data.Size,
+			Uploaded: storedBlob.Pubkey,
+		}
+		c.JSON(200, blobDescriptor)
 
 	})
 }
