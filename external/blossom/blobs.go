@@ -1,5 +1,10 @@
 package blossom
 
+const XContentLength = "X-Content-Length"
+const XContentType = "X-Content-Length"
+const XUploadMessage = "X-Upload-Message"
+const XSHA256 = "X-SHA-256"
+
 type Blob struct {
 	Data []byte
 	Size uint64

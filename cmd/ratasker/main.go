@@ -88,8 +88,6 @@ func main() {
 	}))
 
 	routes.RootRoutes(r, wallet, sqlite)
-
-	r.Use(NostrAutMiddleware())
 	routes.UploadRoutes(r, wallet, sqlite, pathToData)
 
 	log.Println("ratasker started in port 8070")

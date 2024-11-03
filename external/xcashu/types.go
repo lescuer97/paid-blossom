@@ -10,7 +10,7 @@ import (
 )
 
 const Xcashu = "x-cashu"
-const XContentLength = "x-content-length"
+
 const BPerMB = 1024 * 1024
 
 type Unit string

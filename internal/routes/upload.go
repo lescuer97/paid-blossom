@@ -10,11 +10,10 @@ import (
 	"errors"
 	w "github.com/elnosh/gonuts/wallet"
 	"github.com/gin-gonic/gin"
-	n "github.com/nbd-wtf/go-nostr"
 	"log"
 	"os"
 	"ratasker/external/blossom"
-	"ratasker/external/nostr"
+	n "ratasker/external/nostr"
 	"ratasker/external/xcashu"
 	"ratasker/internal/database"
 	"ratasker/internal/utils"
@@ -26,11 +25,25 @@ const SatPerMegaByteUpload = 1
 
 func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pathToData string) {
 	r.HEAD("/upload", func(c *gin.Context) {
-		quoteReq := c.GetHeader(xcashu.XContentLength)
+		sha256Header := c.GetHeader(blossom.XSHA256)
+		hash, err := hex.DecodeString(sha256Header)
+		if err != nil {
+			c.JSON(400, "No X-SHA-256 Header available")
+			return
+		}
 
+		_, err = sqlite.GetBlobLength(hash)
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("Chunk already exists %x", hash[:])
+			c.JSON(201, n.NotifMessage{Message: "chuck exists"})
+			return
+
+		}
+
+		quoteReq := c.GetHeader(blossom.XContentLength)
 		contentLenght, err := strconv.ParseInt(quoteReq, 10, 64)
 		if err != nil {
-			c.JSON(400, "Malformed request")
+			c.JSON(400, "No X-Content-Length Header available")
 			return
 		}
 
@@ -41,7 +54,6 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 			Mints:  []string{wallet.CurrentMint()},
 			Pubkey: hex.EncodeToString(wallet.GetReceivePubkey().SerializeCompressed()),
 		}
-
 		jsonBytes, err := json.Marshal(paymentResponse)
 		if err != nil {
 			c.JSON(500, "Error request")
@@ -56,15 +68,6 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 	})
 
 	r.PUT("/upload", func(c *gin.Context) {
-		event, exists := c.Get(utils.NOSTRAUTH)
-		if !exists {
-			c.JSON(401, nostr.NotifMessage{
-				Message: "No notifications message",
-			})
-		}
-		// There is some trust that the auth middleware will pass the event
-		nostrEvent := event.(n.Event)
-
 		quoteReq := c.GetHeader("content-length")
 
 		buf := new(bytes.Buffer)
@@ -137,7 +140,7 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 			Sha256:    hash[:],
 			CreatedAt: uint64(time.Now().Unix()),
 			Data:      blob,
-			Pubkey:    nostrEvent.PubKey,
+			Pubkey:    "",
 		}
 
 		err = os.WriteFile(storedBlob.Path, buf.Bytes(), 0764)

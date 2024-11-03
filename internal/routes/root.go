@@ -133,6 +133,7 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
 		encodedPayReq := base64.URLEncoding.EncodeToString(jsonBytes)
 
 		c.Header(xcashu.Xcashu, encodedPayReq)
+		c.JSON(402, nil)
 		return
 	})
 
