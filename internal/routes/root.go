@@ -21,7 +21,6 @@ const SatPerMegaByteDownload = 1
 func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandler io.BlossomIO) {
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, nil)
-
 	})
 
 	r.GET("/:sha", func(c *gin.Context) {
@@ -47,7 +46,6 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 		}
 
 		amountToPay := xcashu.QuoteAmountToPay(uint64(blob.Data.Size), SatPerMegaByteDownload)
-
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amountToPay,
 			Unit:   xcashu.Sat,
@@ -97,7 +95,13 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 			return
 		}
 
-		c.Writer.Write(fileBytes)
+		_, err = c.Writer.Write(fileBytes)
+		if err != nil {
+			log.Printf(`c.Writer.Write(fileBytes) %w`, err)
+			c.JSON(500, "Opps! Server error")
+			return
+		}
+		c.Header("Content-Type", blob.Data.Type)
 	})
 
 	r.HEAD("/:sha", func(c *gin.Context) {

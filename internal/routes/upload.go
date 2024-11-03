@@ -61,7 +61,6 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHan
 			c.JSON(500, "Error request")
 			return
 		}
-
 		encodedPayReq := base64.URLEncoding.EncodeToString(jsonBytes)
 
 		c.Header(xcashu.Xcashu, encodedPayReq)
@@ -134,6 +133,7 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHan
 		blob := blossom.Blob{
 			Data: buf.Bytes(),
 			Size: uint64(buf.Len()),
+			Type: c.ContentType(),
 			Name: hashHex,
 		}
 
@@ -145,8 +145,7 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHan
 			Pubkey:    "",
 		}
 
-
-		err = fileHandler.WriteBlob(buf.Bytes()) 
+		err = fileHandler.WriteBlob(buf.Bytes())
 		if err != nil {
 			log.Panic(`fileHandler.WriteBlob(buf.Bytes()) %w`, err)
 		}
@@ -161,6 +160,7 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHan
 			Sha256:   hashHex,
 			Size:     storedBlob.Data.Size,
 			Uploaded: storedBlob.Pubkey,
+			Type:     blob.Type,
 		}
 		c.JSON(200, blobDescriptor)
 

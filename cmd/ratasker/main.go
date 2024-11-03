@@ -77,7 +77,7 @@ func main() {
 	if err != nil {
 		log.Panicf(`w.LoadWallet(config). %wa`, err)
 	}
-    
+
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins: true, // Allow all origins
 		AllowMethods:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
