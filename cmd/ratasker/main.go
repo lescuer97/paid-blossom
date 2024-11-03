@@ -6,6 +6,7 @@ import (
 	"os"
 	"ratasker/external/nostr"
 	"ratasker/internal/database"
+	"ratasker/internal/io"
 	"ratasker/internal/routes"
 	"ratasker/internal/utils"
 	"strings"
@@ -54,13 +55,6 @@ func main() {
 		log.Panicf(`utils.GetRastaskerHomeDirectory(). %w`, err)
 	}
 
-	pathToData := homeDir + "/" + "data"
-
-	err = utils.MakeSureFilePathExists(pathToData, "")
-	if err != nil {
-		log.Panicf(`utils.MakeSureFilePathExists(pathToData, ""). %w`, err)
-	}
-
 	pathToCashu := homeDir + "/" + "cashu"
 
 	err = utils.MakeSureFilePathExists(pathToCashu, "")
@@ -68,16 +62,22 @@ func main() {
 		log.Panicf(`utils.MakeSureFilePathExists(pathToData, ""). %w`, err)
 	}
 
+	fileHandler, err := io.MakeFileSystemHandler()
+	if err != nil {
+		log.Panicf(`io.MakeFileSystemHandler(). %w`, err)
+	}
+
 	// Setup wallet
 	config := w.Config{
 		WalletPath:     pathToCashu,
-		CurrentMintURL: "https://mutinynet.nutmix.cash",
+		CurrentMintURL: os.Getenv("TRUSTED_MINT"),
 	}
 
 	wallet, err := w.LoadWallet(config)
 	if err != nil {
 		log.Panicf(`w.LoadWallet(config). %wa`, err)
 	}
+    
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins: true, // Allow all origins
 		AllowMethods:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -87,8 +87,8 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	routes.RootRoutes(r, wallet, sqlite)
-	routes.UploadRoutes(r, wallet, sqlite, pathToData)
+	routes.RootRoutes(r, wallet, sqlite, fileHandler)
+	routes.UploadRoutes(r, wallet, sqlite, fileHandler)
 
 	log.Println("ratasker started in port 8070")
 	r.Run("0.0.0.0:8070")

@@ -8,9 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"os"
 	"ratasker/external/xcashu"
 	"ratasker/internal/database"
+	"ratasker/internal/io"
 
 	w "github.com/elnosh/gonuts/wallet"
 	"github.com/gin-gonic/gin"
@@ -18,7 +18,7 @@ import (
 
 const SatPerMegaByteDownload = 1
 
-func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
+func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandler io.BlossomIO) {
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, nil)
 
@@ -36,7 +36,7 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
 			return
 		}
 
-		blob, err := sqlite.GetBlob(hash)
+		blob, err := db.GetBlob(hash)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				c.JSON(404, nil)
@@ -81,15 +81,15 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
 			return
 		}
 
-		fileBytes, err := os.ReadFile(blob.Path)
+		fileBytes, err := fileHandler.GetBlob(blob.Path)
+
 		if err != nil {
-			log.Printf(`os.ReadFile(blob.Path) %w`, err)
+			log.Printf(`fileHandler.GetBlob(blob.Path) %w`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
 
 		// check if sha256 is the same
-
 		fileHash := sha256.Sum256(fileBytes)
 		if sha != hex.EncodeToString(fileHash[:]) {
 			log.Printf("HASHes are different")
@@ -109,7 +109,7 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
 			return
 		}
 
-		length, err := sqlite.GetBlobLength(hash)
+		length, err := db.GetBlobLength(hash)
 		if err != nil {
 			log.Printf(`hex.DecodeString(sha) %w`, err)
 			c.JSON(500, "Opps! Server error")

@@ -8,22 +8,24 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	w "github.com/elnosh/gonuts/wallet"
-	"github.com/gin-gonic/gin"
 	"log"
 	"os"
 	"ratasker/external/blossom"
 	n "ratasker/external/nostr"
 	"ratasker/external/xcashu"
 	"ratasker/internal/database"
+	"ratasker/internal/io"
 	"ratasker/internal/utils"
 	"strconv"
 	"time"
+
+	w "github.com/elnosh/gonuts/wallet"
+	"github.com/gin-gonic/gin"
 )
 
 const SatPerMegaByteUpload = 1
 
-func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pathToData string) {
+func UploadRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandler io.BlossomIO) {
 	r.HEAD("/upload", func(c *gin.Context) {
 		sha256Header := c.GetHeader(blossom.XSHA256)
 		hash, err := hex.DecodeString(sha256Header)
@@ -32,7 +34,7 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 			return
 		}
 
-		_, err = sqlite.GetBlobLength(hash)
+		_, err = db.GetBlobLength(hash)
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("Chunk already exists %x", hash[:])
 			c.JSON(201, n.NotifMessage{Message: "chuck exists"})
@@ -82,7 +84,7 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 		hash := sha256.Sum256(buf.Bytes())
 
 		// check if hash already exists
-		_, err = sqlite.GetBlobLength(hash[:])
+		_, err = db.GetBlobLength(hash[:])
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("Chunk already exists %x", hash[:])
 			type Error struct {
@@ -127,8 +129,8 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 		}
 
 		// check for upload payment
-
 		hashHex := hex.EncodeToString(hash[:])
+
 		blob := blossom.Blob{
 			Data: buf.Bytes(),
 			Size: uint64(buf.Len()),
@@ -136,19 +138,20 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database, pat
 		}
 
 		storedBlob := blossom.DBBlobData{
-			Path:      pathToData + "/" + hashHex,
+			Path:      fileHandler.GetStoragePath() + "/" + hashHex,
 			Sha256:    hash[:],
 			CreatedAt: uint64(time.Now().Unix()),
 			Data:      blob,
 			Pubkey:    "",
 		}
 
-		err = os.WriteFile(storedBlob.Path, buf.Bytes(), 0764)
+
+		err = fileHandler.WriteBlob(buf.Bytes()) 
 		if err != nil {
-			log.Panic(`os.WriteFile(pathToData %w`, err)
+			log.Panic(`fileHandler.WriteBlob(buf.Bytes()) %w`, err)
 		}
 
-		err = sqlite.AddBlob(storedBlob)
+		err = db.AddBlob(storedBlob)
 		if err != nil {
 			log.Panic(`sqlite.AddBlob()`, err)
 		}
