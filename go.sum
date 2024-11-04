@@ -113,6 +113,8 @@ github.com/elnosh/btc-docker-test v0.0.0-20240927160251-93a4da3d1754 h1:LYVrpWL+
 github.com/elnosh/btc-docker-test v0.0.0-20240927160251-93a4da3d1754/go.mod h1:OZ/LMGKylMDHiAh47vr2MjzJGzE2iRafZyqseh7RppA=
 github.com/elnosh/gonuts v0.2.1-0.20241028160846-2a875c2e3182 h1:wKgv12qXbU06FiytUY3/oURXwzabOLOJu+ejc6/xItw=
 github.com/elnosh/gonuts v0.2.1-0.20241028160846-2a875c2e3182/go.mod h1:or/FtN7nOQRG6834wck4pwcbLauspc9Dlr6R8hBZpmU=
+github.com/elnosh/gonuts v0.3.0 h1:nOC+S4008TQbyYokiUSTfTRQs7p+Bq+t+gMePDZXPrI=
+github.com/elnosh/gonuts v0.3.0/go.mod h1:or/FtN7nOQRG6834wck4pwcbLauspc9Dlr6R8hBZpmU=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/fergusstrange/embedded-postgres v1.25.0 h1:sa+k2Ycrtz40eCRPOzI7Ry7TtkWXXJ+YRsxpKMDhxK0=
