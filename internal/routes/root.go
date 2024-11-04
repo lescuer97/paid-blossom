@@ -30,7 +30,7 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 		// try to get blob
 		hash, err := hex.DecodeString(sha)
 		if err != nil {
-			log.Printf(`hex.DecodeString(sha) %w`, err)
+			log.Printf(`hex.DecodeString(sha) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
@@ -40,7 +40,7 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 			if errors.Is(err, sql.ErrNoRows) {
 				c.JSON(404, nil)
 			}
-			log.Printf(`sqlite.GetBlob(hash) %w`, err)
+			log.Printf(`sqlite.GetBlob(hash) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
@@ -73,7 +73,7 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 
 		err = xcashu.VerifyTokenIsValid(cashu_header, amountToPay, wallet)
 		if err != nil {
-			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %w`, err)
+			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %+v`, err)
 			c.Header(xcashu.Xcashu, encodedPayReq)
 			c.JSON(402, "payment required")
 			return
@@ -82,7 +82,7 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 		fileBytes, err := fileHandler.GetBlob(blob.Path)
 
 		if err != nil {
-			log.Printf(`fileHandler.GetBlob(blob.Path) %w`, err)
+			log.Printf(`fileHandler.GetBlob(blob.Path) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
@@ -97,7 +97,7 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 
 		_, err = c.Writer.Write(fileBytes)
 		if err != nil {
-			log.Printf(`c.Writer.Write(fileBytes) %w`, err)
+			log.Printf(`c.Writer.Write(fileBytes) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
@@ -108,14 +108,14 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 		sha := c.Param("sha")
 		hash, err := hex.DecodeString(sha)
 		if err != nil {
-			log.Printf(`hex.DecodeString(sha) %w`, err)
+			log.Printf(`hex.DecodeString(sha) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
 
 		length, err := db.GetBlobLength(hash)
 		if err != nil {
-			log.Printf(`hex.DecodeString(sha) %w`, err)
+			log.Printf(`hex.DecodeString(sha) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}

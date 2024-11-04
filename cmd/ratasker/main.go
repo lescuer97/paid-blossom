@@ -40,31 +40,30 @@ func main() {
 	if err != nil {
 		log.Fatal("Something happened while loading the env file")
 	}
+	homeDir, err := utils.GetRastaskerHomeDirectory()
+	if err != nil {
+		log.Panicf(`utils.GetRastaskerHomeDirectory(). %+v`, err)
+	}
 
-	sqlite, err := database.DatabaseSetup(ctx, "migrations")
+	sqlite, err := database.DatabaseSetup(ctx, homeDir, "migrations")
 	defer sqlite.Db.Close()
 
 	if err != nil {
-		log.Panicf(`database.DatabaseSetup(ctx, "migrations"). %w`, err)
+		log.Panicf(`database.DatabaseSetup(ctx, "migrations"). %+v`, err)
 	}
 
 	r := gin.Default()
-
-	homeDir, err := utils.GetRastaskerHomeDirectory()
-	if err != nil {
-		log.Panicf(`utils.GetRastaskerHomeDirectory(). %w`, err)
-	}
 
 	pathToCashu := homeDir + "/" + "cashu"
 
 	err = utils.MakeSureFilePathExists(pathToCashu, "")
 	if err != nil {
-		log.Panicf(`utils.MakeSureFilePathExists(pathToData, ""). %w`, err)
+		log.Panicf(`utils.MakeSureFilePathExists(pathToData, ""). %+v`, err)
 	}
 
 	fileHandler, err := io.MakeFileSystemHandler()
 	if err != nil {
-		log.Panicf(`io.MakeFileSystemHandler(). %w`, err)
+		log.Panicf(`io.MakeFileSystemHandler(). %+v`, err)
 	}
 
 	// Setup wallet
@@ -75,7 +74,7 @@ func main() {
 
 	wallet, err := w.LoadWallet(config)
 	if err != nil {
-		log.Panicf(`w.LoadWallet(config). %wa`, err)
+		log.Panicf(`w.LoadWallet(config). %+va`, err)
 	}
 
 	r.Use(cors.New(cors.Config{

@@ -122,7 +122,7 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHan
 
 		err = xcashu.VerifyTokenIsValid(cashu_header, amountToPay, wallet)
 		if err != nil {
-			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %w`, err)
+			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %+v`, err)
 			c.JSON(402, encodedPayReq)
 			return
 		}
@@ -147,12 +147,16 @@ func UploadRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHan
 
 		err = fileHandler.WriteBlob(buf.Bytes())
 		if err != nil {
-			log.Panic(`fileHandler.WriteBlob(buf.Bytes()) %w`, err)
+			log.Printf(`fileHandler.WriteBlob(buf.Bytes()) %+v`, err)
+			c.JSON(500, "Opss something went wrong")
+			return
 		}
 
 		err = db.AddBlob(storedBlob)
 		if err != nil {
-			log.Panic(`sqlite.AddBlob()`, err)
+			log.Printf(`db.AddBlob(storedBlob) %+v`, err)
+			c.JSON(500, "Opss something went wrong")
+			return
 		}
 
 		blobDescriptor := blossom.BlobDescriptor{
