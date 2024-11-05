@@ -269,3 +269,52 @@ func TestAddTrustedMints(t *testing.T) {
 		t.Fatalf("tx.Commit() %+v", err)
 	}
 }
+func TestAddTrustedMintsRollBack(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	sqlite, err := DatabaseSetup(ctx, dir, "../../migrations")
+
+	if err != nil {
+		t.Fatalf("Could not setup db")
+	}
+
+    tx, err := sqlite.BeginTransaction()
+	if err != nil {
+		t.Fatalf("sqlite.BeginTransaction() %+v", err)
+	}
+
+	err = sqlite.AddTrustedMint(tx, "https://localhost.com")
+	if err != nil {
+		t.Fatalf(`sqlite.AddTrustedMint("https://localhost.com") %+v`, err)
+	}
+
+	trustedMint, err := sqlite.GetTrustedMints(tx)
+	if err != nil {
+		t.Fatalf(`sqlite.GetTrustedMints() %+v`, err)
+	}
+
+	if len(trustedMint) != 1 {
+		t.Error("There should be 2 trusted mints")
+	}
+	if trustedMint[0] != "https://localhost.com" {
+		t.Error("There should be 2 trusted mints")
+	}
+    err = tx.Rollback()
+	if err != nil {
+		t.Fatalf("tx.Rollback() %+v", err)
+	}
+
+    tx, err = sqlite.BeginTransaction()
+	if err != nil {
+		t.Fatalf("sqlite.BeginTransaction() %+v", err)
+	}
+
+	trustedMint, err = sqlite.GetTrustedMints(tx)
+	if err != nil {
+		t.Fatalf(`sqlite.GetTrustedMints() %+v`, err)
+	}
+	if len(trustedMint) != 0 {
+		t.Error("There should be 0 trusted mints")
+	}
+    tx.Commit()
+}
