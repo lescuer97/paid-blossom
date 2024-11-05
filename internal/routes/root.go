@@ -9,16 +9,16 @@ import (
 	"errors"
 	"log"
 	"ratasker/external/xcashu"
+	"ratasker/internal/cashu"
 	"ratasker/internal/database"
 	"ratasker/internal/io"
 
-	w "github.com/elnosh/gonuts/wallet"
 	"github.com/gin-gonic/gin"
 )
 
 const SatPerMegaByteDownload = 1
 
-func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandler io.BlossomIO) {
+func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO) {
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, nil)
 	})
@@ -45,12 +45,40 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 			return
 		}
 
+		tx, err := db.BeginTransaction()
+		if err != nil {
+			log.Fatalf("Failed to begin transaction: %v\n", err)
+		}
+
+		// Ensure that the transaction is rolled back in case of a panic or error
+		defer func() {
+			if p := recover(); p != nil {
+				tx.Rollback()
+				log.Fatalf("Panic occurred: %v\n", p)
+			} else if err != nil {
+				log.Println("Rolling back transaction due to error.")
+				tx.Rollback()
+			} else {
+				err = tx.Commit()
+				if err != nil {
+					log.Fatalf("Failed to commit transaction: %v\n", err)
+				}
+				log.Println("Transaction committed successfully.")
+			}
+		}()
+		mints, err := db.GetTrustedMints(tx)
+		if err != nil {
+			c.JSON(400, "Malformed request")
+			return
+		}
+
+
 		amountToPay := xcashu.QuoteAmountToPay(uint64(blob.Data.Size), SatPerMegaByteDownload)
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amountToPay,
 			Unit:   xcashu.Sat,
-			Mints:  []string{wallet.CurrentMint()},
-			Pubkey: hex.EncodeToString(wallet.GetReceivePubkey().SerializeCompressed()),
+			Mints:  mints,
+			Pubkey: wallet.GetActivePubkey(),
 		}
 
 		jsonBytes, err := json.Marshal(paymentResponse)
@@ -71,7 +99,7 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 			return
 		}
 
-		err = xcashu.VerifyTokenIsValid(cashu_header, amountToPay, wallet)
+		_, err = xcashu.ParseTokenHeader(cashu_header, amountToPay)
 		if err != nil {
 			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %+v`, err)
 			c.Header(xcashu.Xcashu, encodedPayReq)
@@ -119,13 +147,39 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, db database.Database, fileHandl
 			c.JSON(500, "Opps! Server error")
 			return
 		}
+		tx, err := db.BeginTransaction()
+		if err != nil {
+			log.Fatalf("Failed to begin transaction: %v\n", err)
+		}
+
+		// Ensure that the transaction is rolled back in case of a panic or error
+		defer func() {
+			if p := recover(); p != nil {
+				tx.Rollback()
+				log.Fatalf("Panic occurred: %v\n", p)
+			} else if err != nil {
+				log.Println("Rolling back transaction due to error.")
+				tx.Rollback()
+			} else {
+				err = tx.Commit()
+				if err != nil {
+					log.Fatalf("Failed to commit transaction: %v\n", err)
+				}
+				log.Println("Transaction committed successfully.")
+			}
+		}()
+		mints, err := db.GetTrustedMints(tx)
+		if err != nil {
+			c.JSON(400, "Malformed request")
+			return
+		}
 
 		amount := xcashu.QuoteAmountToPay(length, SatPerMegaByteDownload)
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amount,
 			Unit:   xcashu.Sat,
-			Mints:  []string{wallet.CurrentMint()},
-			Pubkey: hex.EncodeToString(wallet.GetReceivePubkey().SerializeCompressed()),
+			Mints:  mints,
+			Pubkey: wallet.GetActivePubkey(),
 		}
 
 		jsonBytes, err := json.Marshal(paymentResponse)

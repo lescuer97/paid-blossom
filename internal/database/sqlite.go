@@ -18,29 +18,24 @@ type SqliteDB struct {
 	Db *sql.DB
 }
 
-func (sq SqliteDB) AddBlob(data blossom.DBBlobData) error {
+func (sq SqliteDB) BeginTransaction() (*sql.Tx, error) {
 	tx, err := sq.Db.Begin()
 	if err != nil {
-		return fmt.Errorf("sq.Db.Begin(). %w", err)
+		return nil, fmt.Errorf("sq.Db.Begin(). %w", err)
 	}
 
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
-	_, err = tx.Exec("INSERT INTO blobs (sha256, size, path, created_at, pubkey, content_type) values (?, ?, ?, ?, ?, ?)",
+	return tx, nil
+}
+
+func (sq SqliteDB) AddBlob(tx *sql.Tx, data blossom.DBBlobData) error {
+	_, err := tx.Exec("INSERT INTO blobs (sha256, size, path, created_at, pubkey, content_type) values (?, ?, ?, ?, ?, ?)",
 		data.Sha256, data.Data.Size, data.Path, data.CreatedAt, data.Pubkey, data.Data.Type,
 	)
 	if err != nil {
-		tx.Rollback()
 		return fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
 	}
 
-	err = tx.Commit()
 	if err != nil {
-		tx.Rollback()
 		return fmt.Errorf(`tx.Commit(). %w`, err)
 	}
 
@@ -101,25 +96,12 @@ func (sq SqliteDB) GetBlobLength(hash []byte) (uint64, error) {
 		tx.Rollback()
 		return length, fmt.Errorf(`tx.Commit(). %w`, err)
 	}
-
 	return length, nil
 }
-func (sq SqliteDB) AddProofs(data cashu.Proofs, pubkey_version uint, redeemed bool, created_at uint64) error {
-	tx, err := sq.Db.Begin()
-	if err != nil {
-		return fmt.Errorf("sq.Db.Begin(). %w", err)
-	}
-
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
+func (sq SqliteDB) AddProofs(tx *sql.Tx, data cashu.Proofs, pubkey_version uint, redeemed bool, created_at uint64) error {
 
 	stmt, err := tx.Prepare("INSERT INTO stored_proofs (amount, id, secret, C, witness, redeemed, created_at, pubkey_version) values (?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
-		tx.Rollback()
 		return fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
 	}
 	defer stmt.Close()
@@ -127,45 +109,23 @@ func (sq SqliteDB) AddProofs(data cashu.Proofs, pubkey_version uint, redeemed bo
 	for _, proof := range data {
 		_, err = stmt.Exec(proof.Amount, proof.Id, proof.Secret, proof.C, proof.Witness, redeemed, created_at, pubkey_version)
 		if err != nil {
-			tx.Rollback()
 			return fmt.Errorf("stmt.Exec(): %w", err)
 		}
-
 	}
-
-	err = tx.Commit()
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf(`tx.Commit(). %w`, err)
-	}
-
 	return nil
 }
 
-func (sq SqliteDB) GetProofsByPubkeyVersion(pubkey uint) (cashu.Proofs, error) {
+func (sq SqliteDB) GetProofsByPubkeyVersion(tx *sql.Tx, pubkey uint) (cashu.Proofs, error) {
 	var proofs cashu.Proofs
-	tx, err := sq.Db.Begin()
-	if err != nil {
-		return proofs, fmt.Errorf("sq.Db.Begin(). %w", err)
-	}
-
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
 
 	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness FROM stored_proofs WHERE pubkey_version = ?")
 	if err != nil {
-		tx.Rollback()
 		return proofs, fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
 	}
 	defer stmt.Close()
 
 	rows, err := stmt.Query(pubkey)
 	if err != nil {
-		tx.Rollback()
 		return proofs, fmt.Errorf(`stmt.Query(pubkey). %w`, err)
 	}
 	defer rows.Close()
@@ -174,35 +134,17 @@ func (sq SqliteDB) GetProofsByPubkeyVersion(pubkey uint) (cashu.Proofs, error) {
 		var p cashu.Proof
 		err = rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness)
 		if err != nil {
-			tx.Rollback()
 			return proofs, fmt.Errorf(`ows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness) %w`, err)
 		}
 
 		proofs = append(proofs, p)
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		tx.Rollback()
-		return proofs, fmt.Errorf(`tx.Commit(). %w`, err)
-	}
-
 	return proofs, nil
 }
 
-func (sq SqliteDB) GetProofsByC(Cs []string) (cashu.Proofs, error) {
+func (sq SqliteDB) GetProofsByC(tx *sql.Tx, Cs []string) (cashu.Proofs, error) {
 	var proofs cashu.Proofs
-	tx, err := sq.Db.Begin()
-	if err != nil {
-		return proofs, fmt.Errorf("sq.Db.Begin(). %w", err)
-	}
-
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
 	// Create the placeholders for the IN clause
 	placeholders := make([]string, len(Cs))
 	for i := range placeholders {
@@ -216,7 +158,6 @@ func (sq SqliteDB) GetProofsByC(Cs []string) (cashu.Proofs, error) {
 
 	stmt, err := tx.Prepare(query)
 	if err != nil {
-		tx.Rollback()
 		return proofs, fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
 	}
 	defer stmt.Close()
@@ -228,7 +169,6 @@ func (sq SqliteDB) GetProofsByC(Cs []string) (cashu.Proofs, error) {
 
 	rows, err := stmt.Query(args...)
 	if err != nil {
-		tx.Rollback()
 		return proofs, fmt.Errorf(`stmt.Query(args...). %w`, err)
 	}
 	defer rows.Close()
@@ -237,35 +177,18 @@ func (sq SqliteDB) GetProofsByC(Cs []string) (cashu.Proofs, error) {
 		var p cashu.Proof
 		err = rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness)
 		if err != nil {
-			tx.Rollback()
 			return proofs, fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness) %w`, err)
 		}
 
 		proofs = append(proofs, p)
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		tx.Rollback()
-		return proofs, fmt.Errorf(`tx.Commit(). %w`, err)
-	}
-
 	return proofs, nil
 }
 
-func (sq SqliteDB) ChangeRedeemState(Cs []string, redeem bool) error {
+func (sq SqliteDB) ChangeRedeemState(tx *sql.Tx, Cs []string, redeem bool) error {
 	var proofs cashu.Proofs
-	tx, err := sq.Db.Begin()
-	if err != nil {
-		return fmt.Errorf("sq.Db.Begin(). %w", err)
-	}
 
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
 	// Create the placeholders for the IN clause
 	placeholders := make([]string, len(Cs))
 	for i := range placeholders {
@@ -279,7 +202,6 @@ func (sq SqliteDB) ChangeRedeemState(Cs []string, redeem bool) error {
 
 	stmt, err := tx.Prepare(query)
 	if err != nil {
-		tx.Rollback()
 		return fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
 	}
 	defer stmt.Close()
@@ -292,7 +214,6 @@ func (sq SqliteDB) ChangeRedeemState(Cs []string, redeem bool) error {
 
 	rows, err := stmt.Query(args...)
 	if err != nil {
-		tx.Rollback()
 		return fmt.Errorf(`stmt.Query(args...). %w`, err)
 	}
 	defer rows.Close()
@@ -301,39 +222,22 @@ func (sq SqliteDB) ChangeRedeemState(Cs []string, redeem bool) error {
 		var p cashu.Proof
 		err = rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness)
 		if err != nil {
-			tx.Rollback()
 			return fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness) %w`, err)
 		}
 
 		proofs = append(proofs, p)
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf(`tx.Commit(). %w`, err)
-	}
-
 	return nil
 }
 
-func (sq SqliteDB) RotateNewPubkey() (uint, error) {
-	tx, err := sq.Db.Begin()
-	if err != nil {
-		return 0, fmt.Errorf("sq.Db.Begin(). %w", err)
-	}
-
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
+func (sq SqliteDB) RotateNewPubkey(tx *sql.Tx) (uint, error) {
 
 	updateQuery := `
     UPDATE cashu_pubkey 
     SET active = false 
     WHERE active = true;`
+
 	// Then insert new active row and return it
 	insertAndSelectQuery := `
         INSERT INTO cashu_pubkey (created_at, active)
@@ -341,9 +245,8 @@ func (sq SqliteDB) RotateNewPubkey() (uint, error) {
         RETURNING version;
     `
 
-	_, err = tx.Exec(updateQuery)
+	_, err := tx.Exec(updateQuery)
 	if err != nil {
-		tx.Rollback()
 		return 0, fmt.Errorf(`tx.Exec(updateQuery) %w`, err)
 	}
 
@@ -352,30 +255,13 @@ func (sq SqliteDB) RotateNewPubkey() (uint, error) {
 	var version uint
 	err = tx.QueryRow(insertAndSelectQuery, now).Scan(&version)
 	if err != nil {
-		tx.Rollback()
 		return 0, fmt.Errorf(`tx.QueryRow(insertAndSelectQuery, now) %w`, err)
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		tx.Rollback()
-		return 0, fmt.Errorf(`tx.Commit(). %w`, err)
 	}
 
 	return version, nil
 }
-func (sq SqliteDB) GetActivePubkey() (uint, error) {
+func (sq SqliteDB) GetActivePubkey(tx *sql.Tx) (uint, error) {
 	var version uint = 0
-	tx, err := sq.Db.Begin()
-	if err != nil {
-		return 0, fmt.Errorf("sq.Db.Begin(). %w", err)
-	}
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
 
 	stmt, err := tx.Prepare("SELECT version FROM cashu_pubkey WHERE active = true")
 	if err != nil {
@@ -386,29 +272,13 @@ func (sq SqliteDB) GetActivePubkey() (uint, error) {
 	// Create a record to hold the result
 	err = stmt.QueryRow().Scan(&version)
 	if err != nil {
-		tx.Rollback()
 		return version, fmt.Errorf("stmt.QueryRow(hash).Scan %w", err)
-	}
-	tx.Commit()
-	if err != nil {
-		tx.Rollback()
-		return 0, fmt.Errorf(`tx.Commit(). %w`, err)
 	}
 
 	return version, nil
 }
-func (sq SqliteDB) GetTrustedMints() ([]string, error) {
+func (sq SqliteDB) GetTrustedMints(tx *sql.Tx) ([]string, error) {
 	var mints []string
-	tx, err := sq.Db.Begin()
-	if err != nil {
-		return mints, fmt.Errorf("sq.Db.Begin(). %w", err)
-	}
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
 
 	stmt, err := tx.Prepare("SELECT url FROM trusted_mints")
 	if err != nil {
@@ -426,28 +296,15 @@ func (sq SqliteDB) GetTrustedMints() ([]string, error) {
 		var url string
 		err = rows.Scan(&url)
 		if err != nil {
-			tx.Rollback()
 			return mints, fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness) %w`, err)
 		}
 
 		mints = append(mints, url)
 	}
-	tx.Commit()
 
 	return mints, nil
 }
-func (sq SqliteDB) AddTrustedMint(url string) error {
-	tx, err := sq.Db.Begin()
-	if err != nil {
-		return fmt.Errorf("sq.Db.Begin(). %w", err)
-	}
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
-		}
-	}()
-
+func (sq SqliteDB) AddTrustedMint(tx *sql.Tx, url string) error {
 	now := time.Now().Unix()
 	stmt, err := tx.Prepare("INSERT INTO trusted_mints (url, created_at) values (?,?)")
 	if err != nil {
@@ -460,9 +317,6 @@ func (sq SqliteDB) AddTrustedMint(url string) error {
 	if err != nil {
 		return fmt.Errorf("stmt.Query() %w", err)
 	}
-
-	tx.Commit()
-
 	return nil
 }
 

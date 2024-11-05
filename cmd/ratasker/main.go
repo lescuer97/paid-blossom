@@ -5,17 +5,16 @@ import (
 	"log"
 	"os"
 	"ratasker/external/nostr"
+	"ratasker/internal/cashu"
 	"ratasker/internal/database"
 	"ratasker/internal/io"
 	"ratasker/internal/routes"
 	"ratasker/internal/utils"
 	"strings"
 
-	"github.com/joho/godotenv"
-
-	w "github.com/elnosh/gonuts/wallet"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 var (
@@ -66,15 +65,10 @@ func main() {
 		log.Panicf(`io.MakeFileSystemHandler(). %+v`, err)
 	}
 
-	// Setup wallet
-	config := w.Config{
-		WalletPath:     pathToCashu,
-		CurrentMintURL: os.Getenv("TRUSTED_MINT"),
-	}
-
-	wallet, err := w.LoadWallet(config)
+	// try to load new wallet for test
+	wallet, err := cashu.NewDBLocalWallet(os.Getenv("SEED"), sqlite)
 	if err != nil {
-		log.Panicf(`w.LoadWallet(config). %+va`, err)
+		log.Panicf(`cashu.NewDBLocalWallet(os.Getenv("SEED"), sqlite) %+va`, err)
 	}
 
 	r.Use(cors.New(cors.Config{
@@ -86,8 +80,8 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	routes.RootRoutes(r, wallet, sqlite, fileHandler)
-	routes.UploadRoutes(r, wallet, sqlite, fileHandler)
+	routes.RootRoutes(r, &wallet, sqlite, fileHandler)
+	routes.UploadRoutes(r, &wallet, sqlite, fileHandler)
 
 	log.Println("ratasker started in port 8070")
 	r.Run("0.0.0.0:8070")
