@@ -31,8 +31,8 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 		}
 
 		_, err = db.GetBlobLength(hash)
-		if !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("Chunk already exists %x", hash[:])
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("Chunk already exists %x. %+v", hash[:], err)
 			c.JSON(201, n.NotifMessage{Message: "chuck exists"})
 			return
 
@@ -63,9 +63,9 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 				if err != nil {
 					log.Fatalf("Failed to commit transaction: %v\n", err)
 				}
-				log.Println("Transaction committed successfully.")
 			}
 		}()
+
 		wallets, err := db.GetTrustedMints(tx)
 		if err != nil {
 			c.JSON(400, "Malformed request")
@@ -85,7 +85,6 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 			return
 		}
 		encodedPayReq := base64.URLEncoding.EncodeToString(jsonBytes)
-
 		c.Header(xcashu.Xcashu, encodedPayReq)
 		c.Status(402)
 		return
@@ -97,6 +96,7 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 		if err != nil {
 			log.Printf("core.WriteBlobAndCharge(). %+v", err)
 
+			c.JSON(400, "Opps!")
 		}
 
 	})

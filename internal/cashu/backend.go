@@ -18,7 +18,8 @@ import (
 	"github.com/elnosh/gonuts/cashu/nuts/nut01"
 	"github.com/elnosh/gonuts/cashu/nuts/nut10"
 	"github.com/elnosh/gonuts/cashu/nuts/nut11"
-	"github.com/elnosh/gonuts/cashu/nuts/nut12"
+
+	// "github.com/elnosh/gonuts/cashu/nuts/nut12"
 	"github.com/elnosh/gonuts/wallet"
 	"github.com/tyler-smith/go-bip39"
 )
@@ -113,8 +114,32 @@ func NewDBLocalWallet(seedWords string, db database.Database) (DBNativeWallet, e
 		}
 		wallet.filter.Add(bytes)
 	}
-
 	wallet.privKey = privekey
+
+	// Get pubkey from privkey
+	currentPubkey, err := db.GetActivePubkey(tx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err := wallet.RotatePubkey(tx, db)
+			if err != nil {
+				return wallet, fmt.Errorf("wallet.RotatePubkey(tx, db) %w", err)
+			}
+
+		} else {
+
+			return wallet, fmt.Errorf("db.GetActivePubkey(tx) %w", err)
+		}
+
+	}
+
+	privKey, err := wallet.derivePrivateKey(currentPubkey.VersionNum)
+	if err != nil {
+		return wallet, fmt.Errorf("wallet.derivePrivateKey(currentPubkey.VersionNum) %w", err)
+
+	}
+	wallet.PubkeyVersion = currentPubkey
+	wallet.CurrentPubkey = privKey.PubKey()
+
 	return wallet, nil
 }
 
@@ -268,7 +293,7 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 		return token.Proofs(), fmt.Errorf("db.GetTrustedMints() %w", err)
 	}
 	if !slices.Contains(trustedMints, token.Mint()) {
-		return token.Proofs(), ErrNotTrustedMint
+		return token.Proofs(), fmt.Errorf("MintTried: %+v, %w, %w", token.Mint(), ErrNotTrustedMint, err)
 	}
 
 	// Get Keysets form mints
@@ -282,18 +307,18 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 	if err != nil {
 		return token.Proofs(), fmt.Errorf("l.derivePrivateKey(version) %w", err)
 	}
-	now := time.Now()
+	// now := time.Now()
 
-	mintKeys, ok := l.activeKeys[token.Mint()]
+	// mintKeys, ok := l.activeKeys[token.Mint()]
+	//
+	// if !ok {
+	// 	return token.Proofs(), ErrNotTrustedMint
+	// }
 
-	if !ok {
-		return token.Proofs(), ErrNotTrustedMint
-	}
-
-	tmpKeys := make(map[string]nut01.Keyset)
+	// tmpKeys := make(map[string]nut01.Keyset)
 
 	for _, p := range token.Proofs() {
-		mintPubkey, err := FindKeysetPubkey(tx, p, token.Mint(), mintKeys, tmpKeys)
+		// mintPubkey, err := FindKeysetPubkey(tx, p, token.Mint(), mintKeys, tmpKeys)
 
 		spendCondition, err := nut10.DeserializeSecret(p.Secret)
 		if err != nil {
@@ -302,31 +327,31 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 
 		// Verify that it is a P2PK
 		if spendCondition.Kind != nut10.P2PK {
-			return token.Proofs(), ErrProofIsNotP2PK
+			return token.Proofs(), fmt.Errorf("proof: %+v, %w, %w", p, ErrProofIsNotP2PK, err)
 		}
 
 		// Verify that is lock to a private key that I control
 		if !nut11.CanSign(spendCondition, lockedEcashPrivateKey) {
-			return token.Proofs(), fmt.Errorf("nut10.DeserializeSecret(p.Secret) %w. %w", err, ErrNotLockedToPubkey)
+			return token.Proofs(), fmt.Errorf("CanSign(spendCondition, lockedEcashPrivateKey) %w. %w. Proof: ", err, ErrNotLockedToPubkey, p)
 		}
 		// Verificar que tiene un bloqueo de al menos 4 horas
-		p2pkTags, err := nut11.ParseP2PKTags(spendCondition.Data.Tags)
-		if err != nil {
-			return token.Proofs(), fmt.Errorf("nut11.ParseP2PKTags(spendCondition.Data.Tags) %w.", err)
-		}
+		// p2pkTags, err := nut11.ParseP2PKTags(spendCondition.Data.Tags)
+		// if err != nil {
+		// 	return token.Proofs(), fmt.Errorf("nut11.ParseP2PKTags(spendCondition.Data.Tags) %w.", err)
+		// }
 
-		locktime := time.Unix(p2pkTags.Locktime, 0)
-		now = now.Add(ExpirationOfPubkeyHours * time.Hour)
-
-		if locktime.Unix() < now.Unix() {
-			return token.Proofs(), fmt.Errorf("Timestamp doesn't have a locktime of 4 hours")
-		}
+		// locktime := time.Unix(p2pkTags.Locktime, 0)
+		// now = now.Add(ExpirationOfPubkeyHours * time.Hour)
+		//
+		// if locktime.Unix() < now.Unix() {
+		// 	return token.Proofs(), fmt.Errorf("Timestamp doesn't have a locktime of 4 hours")
+		// }
 
 		// Verificar que esta unblinded correctamente
-		if !nut12.VerifyProofDLEQ(p, mintPubkey) {
-			return token.Proofs(), fmt.Errorf("nut12.VerifyProofDLEQ(p, mintPubkey). %w. %w", err, ErrCouldNotVerifyDLEQ)
-		}
-
+		// if !nut12.VerifyProofDLEQ(p, mintPubkey) {
+		// 	return token.Proofs(), fmt.Errorf("nut12.VerifyProofDLEQ(p, mintPubkey). %w. %w", err, ErrCouldNotVerifyDLEQ)
+		// }
+		//
 		// TODO - LATER Check Bloom filter if there is a collision and if there is check if it's a secret
 		bytesC, err := hex.DecodeString(p.C)
 		if err != nil {
@@ -337,7 +362,7 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 		if l.filter.TestOrAdd(bytesC) {
 			proofs, err := db.GetProofsByC(tx, []string{p.C})
 			if len(proofs) > 0 {
-				return token.Proofs(), ErrProofAlreadySeen
+				return token.Proofs(), fmt.Errorf("proof: %+v, %w", p, ErrProofAlreadySeen)
 			}
 			if err != nil {
 				if errors.Is(err, sql.ErrNoRows) {

@@ -19,6 +19,7 @@ type SqliteDB struct {
 }
 
 func (sq SqliteDB) BeginTransaction() (*sql.Tx, error) {
+	// sq.Db.BeginTx
 	tx, err := sq.Db.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("sq.Db.Begin(). %w", err)
@@ -28,17 +29,15 @@ func (sq SqliteDB) BeginTransaction() (*sql.Tx, error) {
 }
 
 func (sq SqliteDB) AddBlob(tx *sql.Tx, data blossom.DBBlobData) error {
-	_, err := tx.Exec("INSERT INTO blobs (sha256, size, path, created_at, pubkey, content_type) values (?, ?, ?, ?, ?, ?)",
-		data.Sha256, data.Data.Size, data.Path, data.CreatedAt, data.Pubkey, data.Data.Type,
-	)
+	stmt, err := tx.Prepare("INSERT INTO blobs (sha256, size, path, created_at, pubkey, content_type) values (?, ?, ?, ?, ?, ?)")
+
 	if err != nil {
 		return fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
 	}
-
+	_, err = stmt.Exec(data.Sha256, data.Data.Size, data.Path, data.CreatedAt, data.Pubkey, data.Data.Type)
 	if err != nil {
-		return fmt.Errorf(`tx.Commit(). %w`, err)
+		return fmt.Errorf(`stmt.Exec(data.Sha256, data.Data.Size, data.Path, data.CreatedAt, data.Pubkey, data.Data.Type). %w`, err)
 	}
-
 	return nil
 
 }
@@ -78,18 +77,13 @@ func (sq SqliteDB) GetBlobLength(hash []byte) (uint64, error) {
 	if err != nil {
 		return length, fmt.Errorf("sq.Db.Begin(). %w", err)
 	}
+	// tx.St
 
 	stmt, err := tx.Prepare("SELECT size FROM blobs WHERE sha256 = ?")
 	if err != nil {
 		return length, fmt.Errorf("sq.Db.Prepare(). %w", err)
 	}
 	defer stmt.Close()
-
-	// Create a record to hold the result
-	err = stmt.QueryRow(hash).Scan(&length)
-	if err != nil {
-		return length, fmt.Errorf("stmt.QueryRow(hash).Scan %w", err)
-	}
 
 	err = tx.Commit()
 	if err != nil {
@@ -308,23 +302,18 @@ func (sq SqliteDB) GetActivePubkey(tx *sql.Tx) (CurrentPubkey, error) {
 func (sq SqliteDB) GetTrustedMints(tx *sql.Tx) ([]string, error) {
 	var mints []string
 
-	stmt, err := tx.Prepare("SELECT url FROM trusted_mints")
-	if err != nil {
-		return mints, fmt.Errorf("sq.Db.Prepare(). %w", err)
-	}
-	defer stmt.Close()
+	rows, err := tx.Query("SELECT url FROM trusted_mints")
 
 	// Create a record to hold the result
-	rows, err := stmt.Query()
 	if err != nil {
-		return mints, fmt.Errorf("stmt.Query() %w", err)
+		return mints, fmt.Errorf("SELECT url FROM trusted_mints %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var url string
+		var url string = ""
 		err = rows.Scan(&url)
 		if err != nil {
-			return mints, fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness) %w`, err)
+			return mints, fmt.Errorf(`rows.Scan(&url) %w`, err)
 		}
 
 		mints = append(mints, url)
@@ -364,6 +353,8 @@ func DatabaseSetup(ctx context.Context, databaseDir string, migrationDir string)
 	if err := goose.Up(db, migrationDir); err != nil {
 		log.Fatalf("Error running migrations: %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.Exec("PRAGMA journal_mode=WAL;")
 
 	sqlitedb.Db = db
 

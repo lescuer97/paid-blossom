@@ -38,7 +38,7 @@ func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Da
 
 	// check if hash already exists
 	_, err = db.GetBlobLength(hash[:])
-	if !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		log.Printf("Chunk already exists %x", hash[:])
 		type Error struct {
 			Error string
@@ -117,11 +117,14 @@ func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Da
 		return err
 	}
 
+	log.Println("AFTER VERIFY")
+
 	err = wallet.StoreEcash(proofs, tx, db)
 	if err != nil {
 		log.Printf(`wallet.StoreEcash(proofs, tx, db) %+v`, err)
 		return err
 	}
+	log.Println("AFTER STORAGE")
 
 	// check for upload payment
 	hashHex := hex.EncodeToString(hash[:])
@@ -141,12 +144,13 @@ func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Da
 		Pubkey:    "",
 	}
 
-	err = fileHandler.WriteBlob(buf.Bytes())
+	err = fileHandler.WriteBlob(hashHex, buf.Bytes())
 	if err != nil {
 		log.Printf(`fileHandler.WriteBlob(buf.Bytes()) %+v`, err)
 		c.JSON(500, "Opss something went wrong")
 		return err
 	}
+	log.Println("AFTER WRITING")
 
 	err = db.AddBlob(tx, storedBlob)
 	if err != nil {

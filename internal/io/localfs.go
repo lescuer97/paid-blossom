@@ -29,8 +29,8 @@ func MakeFileSystemHandler() (LocalFSHandler, error) {
 	return handler, nil
 }
 
-func (l LocalFSHandler) WriteBlob(blob []byte) error {
-	err := os.WriteFile(l.DataPath, blob, 0764)
+func (l LocalFSHandler) WriteBlob(filename string, blob []byte) error {
+	err := os.WriteFile(l.DataPath+"/"+filename, blob, 0764)
 	if err != nil {
 		return fmt.Errorf(`os.WriteFile(l.DataPath, blob, 0764). %w`, err)
 	}

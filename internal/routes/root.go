@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"ratasker/external/xcashu"
 	"ratasker/internal/cashu"
@@ -20,7 +21,6 @@ const SatPerMegaByteDownload = 1
 
 func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO) {
 	r.GET("/", func(c *gin.Context) {
-		log.Println("pubkey. ", wallet.GetActivePubkey())
 
 		c.JSON(200, nil)
 	})
@@ -28,7 +28,6 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 	r.GET("/:sha", func(c *gin.Context) {
 		sha := c.Param("sha")
 
-		log.Println("got hash: ", sha)
 		// try to get blob
 		hash, err := hex.DecodeString(sha)
 		if err != nil {
@@ -191,6 +190,7 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 		}
 
 		amount := xcashu.QuoteAmountToPay(length, SatPerMegaByteDownload)
+		fmt.Println("amount: ", amount)
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amount,
 			Unit:   xcashu.Sat,
