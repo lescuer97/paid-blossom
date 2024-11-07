@@ -7,6 +7,11 @@ import (
 	"github.com/elnosh/gonuts/cashu"
 )
 
+type CurrentPubkey struct {
+	VersionNum uint
+	Expiration uint64
+}
+
 type Database interface {
 	BeginTransaction() (*sql.Tx, error)
 	GetBlob(hash []byte) (blossom.DBBlobData, error)
@@ -19,12 +24,13 @@ type Database interface {
 	AddProofs(tx *sql.Tx, data cashu.Proofs, pubkey uint, redeemed bool, created_at uint64) error
 	GetProofsByPubkeyVersion(tx *sql.Tx, pubkey uint) (cashu.Proofs, error)
 	GetProofsByC(tx *sql.Tx, Cs []string) (cashu.Proofs, error)
+	GetProofsByRedeemed(tx *sql.Tx, redeemed bool) (cashu.Proofs, error)
 	ChangeRedeemState(tx *sql.Tx, Cs []string, redeem bool) error
 
 	AddTrustedMint(tx *sql.Tx, url string) error
 	GetTrustedMints(tx *sql.Tx) ([]string, error)
 	//
 	// // take all pubkeys and turn active off and just make a new one
-	RotateNewPubkey(tx *sql.Tx) (uint, error)
-	GetActivePubkey(tx *sql.Tx) (uint, error)
+	RotateNewPubkey(tx *sql.Tx, expiration int64) (CurrentPubkey, error)
+	GetActivePubkey(tx *sql.Tx) (CurrentPubkey, error)
 }

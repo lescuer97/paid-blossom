@@ -14,26 +14,26 @@ func TestRotatePubkey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not setup db")
 	}
-    tx, err := sqlite.BeginTransaction()
+	tx, err := sqlite.BeginTransaction()
 	if err != nil {
 		t.Fatalf("sqlite.BeginTransaction() %+v", err)
 	}
-	version, err := sqlite.RotateNewPubkey(tx)
+	expirations := time.Now().Add(4 * time.Hour)
+	current, err := sqlite.RotateNewPubkey(tx, expirations.Unix())
 	if err != nil {
 		t.Fatalf("sqlite.RotateNewPubkey() %+v", err)
 	}
-	if version != 1 {
-		t.Errorf("should be version 0. got: %v", version)
+	if current.VersionNum != 1 {
+		t.Errorf("should be version 0. got: %v", current.VersionNum)
 	}
-
-	version, err = sqlite.RotateNewPubkey(tx)
+	current, err = sqlite.RotateNewPubkey(tx, expirations.Unix())
 	if err != nil {
 		t.Fatalf("sqlite.RotateNewPubkey() %+v", err)
 	}
-	if version != 2 {
-		t.Errorf("should be version 1 got: %v", version)
+	if current.VersionNum != 2 {
+		t.Errorf("should be version 1 got: %v", current.VersionNum)
 	}
-    err = tx.Commit()
+	err = tx.Commit()
 	if err != nil {
 		t.Fatalf("tx.Commit() %+v", err)
 	}
@@ -46,16 +46,17 @@ func TestAddProofsAndGetForC(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not setup db")
 	}
-    tx, err := sqlite.BeginTransaction()
+	tx, err := sqlite.BeginTransaction()
 	if err != nil {
 		t.Fatalf("sqlite.BeginTransaction() %+v", err)
 	}
-	version, err := sqlite.RotateNewPubkey(tx)
+	expirations := time.Now().Add(4 * time.Hour)
+	current, err := sqlite.RotateNewPubkey(tx, expirations.Unix())
 	if err != nil {
 		t.Fatalf("sqlite.RotateNewPubkey() %+v", err)
 	}
-	if version != 1 {
-		t.Errorf("should be version 0. got: %v", version)
+	if current.VersionNum != 1 {
+		t.Errorf("should be version 0. got: %v", current.VersionNum)
 	}
 
 	proofs := cashu.Proofs{
@@ -75,12 +76,12 @@ func TestAddProofsAndGetForC(t *testing.T) {
 	}
 
 	now := time.Now().Unix()
-	err = sqlite.AddProofs(tx, proofs, version, false, uint64(now))
+	err = sqlite.AddProofs(tx, proofs, current.VersionNum, false, uint64(now))
 	if err != nil {
 		t.Fatalf("sqlite.AddProofs(proofs,version, false, uint64(now) %+v", err)
 	}
 
-	newProofs, err := sqlite.GetProofsByC(tx,[]string{"Ctest"})
+	newProofs, err := sqlite.GetProofsByC(tx, []string{"Ctest"})
 	if err != nil {
 		t.Fatalf(`sqlite.GetProofsByC([]string{"Ctest"}) %+v`, err)
 	}
@@ -90,11 +91,10 @@ func TestAddProofsAndGetForC(t *testing.T) {
 	if len(newProofs) != 1 {
 		t.Errorf(`Wrong length of proofs %+v`, err)
 	}
-    err = tx.Commit()
+	err = tx.Commit()
 	if err != nil {
 		t.Fatalf("tx.Commit() %+v", err)
 	}
-
 
 }
 func TestAddProofsAndGetViaPubkey(t *testing.T) {
@@ -106,16 +106,17 @@ func TestAddProofsAndGetViaPubkey(t *testing.T) {
 		t.Fatalf("Could not setup db")
 	}
 
-    tx, err := sqlite.BeginTransaction()
+	tx, err := sqlite.BeginTransaction()
 	if err != nil {
 		t.Fatalf("sqlite.BeginTransaction() %+v", err)
 	}
-	version, err := sqlite.RotateNewPubkey(tx)
+	expirations := time.Now().Add(4 * time.Hour)
+	current, err := sqlite.RotateNewPubkey(tx, expirations.Unix())
 	if err != nil {
 		t.Fatalf("sqlite.RotateNewPubkey() %+v", err)
 	}
-	if version != 1 {
-		t.Errorf("should be version 0. got: %v", version)
+	if current.VersionNum != 1 {
+		t.Errorf("should be version 0. got: %v", current.VersionNum)
 	}
 
 	proofs := cashu.Proofs{
@@ -135,17 +136,18 @@ func TestAddProofsAndGetViaPubkey(t *testing.T) {
 	}
 
 	now := time.Now().Unix()
-	err = sqlite.AddProofs(tx, proofs, version, false, uint64(now))
+	err = sqlite.AddProofs(tx, proofs, current.VersionNum, false, uint64(now))
 	if err != nil {
 		t.Fatalf("sqlite.AddProofs(proofs,version, false, uint64(now) %+v", err)
 	}
+
 	// rotate pubkey and add proofs with new pubkey
-	version, err = sqlite.RotateNewPubkey(tx)
+	current, err = sqlite.RotateNewPubkey(tx, expirations.Unix())
 	if err != nil {
 		t.Fatalf("sqlite.RotateNewPubkey() %+v", err)
 	}
-	if version != 2 {
-		t.Errorf("should be version 2. got: %v", version)
+	if current.VersionNum != 2 {
+		t.Errorf("should be version 2. got: %v", current.VersionNum)
 	}
 
 	proofs2 := cashu.Proofs{
@@ -164,12 +166,12 @@ func TestAddProofsAndGetViaPubkey(t *testing.T) {
 	}
 
 	now = time.Now().Unix()
-	err = sqlite.AddProofs(tx, proofs2, version, false, uint64(now))
+	err = sqlite.AddProofs(tx, proofs2, current.VersionNum, false, uint64(now))
 	if err != nil {
 		t.Fatalf("sqlite.AddProofs(proofs,version, false, uint64(now) %+v", err)
 	}
 
-	newProofs, err := sqlite.GetProofsByPubkeyVersion(tx, version)
+	newProofs, err := sqlite.GetProofsByPubkeyVersion(tx, current.VersionNum)
 	if err != nil {
 		t.Fatalf(`sqlite.GetProofsByC([]string{"Ctest"}) %+v`, err)
 	}
@@ -180,7 +182,7 @@ func TestAddProofsAndGetViaPubkey(t *testing.T) {
 		t.Errorf(`Wrong length of proofs %+v`, err)
 	}
 
-    err = tx.Commit()
+	err = tx.Commit()
 	if err != nil {
 		t.Fatalf("tx.Commit() %+v", err)
 	}
@@ -194,36 +196,38 @@ func TestCheckPubkeyVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not setup db")
 	}
-    tx, err := sqlite.BeginTransaction()
+	tx, err := sqlite.BeginTransaction()
 	if err != nil {
 		t.Fatalf("sqlite.BeginTransaction() %+v", err)
 	}
-	version, err := sqlite.RotateNewPubkey(tx)
+	expirations := time.Now().Add(4 * time.Hour)
+
+	current, err := sqlite.RotateNewPubkey(tx, expirations.Unix())
 	if err != nil {
 		t.Fatalf("sqlite.RotateNewPubkey() %+v", err)
 	}
-	if version != 1 {
-		t.Errorf("should be version 1. got: %v", version)
+	if current.VersionNum != 1 {
+		t.Errorf("should be version 1. got: %v", current.VersionNum)
 	}
-	version, err = sqlite.RotateNewPubkey(tx)
+	current, err = sqlite.RotateNewPubkey(tx, expirations.Unix())
 	if err != nil {
 		t.Fatalf("sqlite.RotateNewPubkey() %+v", err)
 	}
-	if version != 2 {
-		t.Errorf("should be version 2. got: %v", version)
+	if current.VersionNum != 2 {
+		t.Errorf("should be version 2. got: %v", current.VersionNum)
 	}
-	_, err = sqlite.RotateNewPubkey(tx)
+	_, err = sqlite.RotateNewPubkey(tx, expirations.Unix())
 	if err != nil {
 		t.Fatalf("sqlite.RotateNewPubkey() %+v", err)
 	}
-	version, err = sqlite.GetActivePubkey(tx)
+	current, err = sqlite.GetActivePubkey(tx)
 	if err != nil {
 		t.Fatalf("sqlite.RotateNewPubkey() %+v", err)
 	}
-	if version != 3 {
-		t.Errorf("should be version 3. got: %v", version)
+	if current.VersionNum != 3 {
+		t.Errorf("should be version 3. got: %v", current.VersionNum)
 	}
-    err = tx.Commit()
+	err = tx.Commit()
 	if err != nil {
 		t.Fatalf("tx.Commit() %+v", err)
 	}
@@ -238,7 +242,7 @@ func TestAddTrustedMints(t *testing.T) {
 		t.Fatalf("Could not setup db")
 	}
 
-    tx, err := sqlite.BeginTransaction()
+	tx, err := sqlite.BeginTransaction()
 	if err != nil {
 		t.Fatalf("sqlite.BeginTransaction() %+v", err)
 	}
@@ -264,11 +268,12 @@ func TestAddTrustedMints(t *testing.T) {
 	if trustedMint[0] != "https://localhost.com" {
 		t.Error("There should be 2 trusted mints")
 	}
-    err = tx.Commit()
+	err = tx.Commit()
 	if err != nil {
 		t.Fatalf("tx.Commit() %+v", err)
 	}
 }
+
 func TestAddTrustedMintsRollBack(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -278,7 +283,7 @@ func TestAddTrustedMintsRollBack(t *testing.T) {
 		t.Fatalf("Could not setup db")
 	}
 
-    tx, err := sqlite.BeginTransaction()
+	tx, err := sqlite.BeginTransaction()
 	if err != nil {
 		t.Fatalf("sqlite.BeginTransaction() %+v", err)
 	}
@@ -299,12 +304,12 @@ func TestAddTrustedMintsRollBack(t *testing.T) {
 	if trustedMint[0] != "https://localhost.com" {
 		t.Error("There should be 2 trusted mints")
 	}
-    err = tx.Rollback()
+	err = tx.Rollback()
 	if err != nil {
 		t.Fatalf("tx.Rollback() %+v", err)
 	}
 
-    tx, err = sqlite.BeginTransaction()
+	tx, err = sqlite.BeginTransaction()
 	if err != nil {
 		t.Fatalf("sqlite.BeginTransaction() %+v", err)
 	}
@@ -316,5 +321,5 @@ func TestAddTrustedMintsRollBack(t *testing.T) {
 	if len(trustedMint) != 0 {
 		t.Error("There should be 0 trusted mints")
 	}
-    tx.Commit()
+	tx.Commit()
 }

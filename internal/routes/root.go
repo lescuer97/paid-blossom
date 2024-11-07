@@ -20,6 +20,8 @@ const SatPerMegaByteDownload = 1
 
 func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO) {
 	r.GET("/", func(c *gin.Context) {
+		log.Println("pubkey. ", wallet.GetActivePubkey())
+
 		c.JSON(200, nil)
 	})
 
@@ -72,7 +74,6 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 			return
 		}
 
-
 		amountToPay := xcashu.QuoteAmountToPay(uint64(blob.Data.Size), SatPerMegaByteDownload)
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amountToPay,
@@ -99,11 +100,26 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 			return
 		}
 
-		_, err = xcashu.ParseTokenHeader(cashu_header, amountToPay)
+		token, err := xcashu.ParseTokenHeader(cashu_header, amountToPay)
 		if err != nil {
 			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %+v`, err)
 			c.Header(xcashu.Xcashu, encodedPayReq)
 			c.JSON(402, "payment required")
+			return
+		}
+		// Check Token is valid
+		proofs, err := wallet.VerifyToken(token, tx, db)
+		if err != nil {
+			log.Printf(`wallet.VerifyToken(token, tx, db) %+v`, err)
+			c.Header(xcashu.Xcashu, encodedPayReq)
+			c.JSON(400, "payment required")
+			return
+		}
+
+		err = wallet.StoreEcash(proofs, tx, db)
+		if err != nil {
+			log.Printf(`wallet.StoreEcash(proofs, tx, db) %+v`, err)
+			c.JSON(400, "payment required")
 			return
 		}
 

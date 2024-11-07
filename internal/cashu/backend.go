@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
@@ -23,6 +24,7 @@ import (
 )
 
 const DerivationForP2PK = 129372
+const ExpirationOfPubkeyHours = 4
 
 var (
 	ErrNotTrustedMint         = errors.New("Not from trusted Mint")
@@ -31,6 +33,7 @@ var (
 	ErrCouldNotFindMintPubkey = errors.New("Could not find mint pubkey")
 	ErrCouldNotVerifyDLEQ     = errors.New("Could not verify proof comes from trusted mint")
 	ErrProofIsNotP2PK         = errors.New("Proof is not P2PK")
+	ErrProofAlreadySeen       = errors.New("Proof already seen")
 )
 
 type CashuWallet interface {
@@ -43,8 +46,9 @@ type CashuWallet interface {
 type DBNativeWallet struct {
 	privKey       *hdkeychain.ExtendedKey
 	CurrentPubkey *secp256k1.PublicKey
-	pubkeyVersion uint
+	PubkeyVersion database.CurrentPubkey
 	activeKeys    map[string]nut01.Keyset
+	filter        *bloom.BloomFilter
 }
 
 func NewDBLocalWallet(seedWords string, db database.Database) (DBNativeWallet, error) {
@@ -93,8 +97,24 @@ func NewDBLocalWallet(seedWords string, db database.Database) (DBNativeWallet, e
 		return wallet, fmt.Errorf("wallet.getActiveKeysFromTrustedMints() %w", err)
 	}
 
-	wallet.privKey = privekey
+	// Set bloom filter
+	wallet.filter = bloom.NewWithEstimates(1_000_000, 0.01)
 
+	// Get proofs that are not redeemed
+	proofs, err := db.GetProofsByRedeemed(tx, false)
+	if err != nil {
+		return wallet, fmt.Errorf("db.GetProofsByRedeemed(tx, false) %w", err)
+	}
+
+	for i := 0; i < len(proofs); i++ {
+		bytes, err := hex.DecodeString(proofs[i].C)
+		if err != nil {
+			return wallet, fmt.Errorf("db.GetProofsByRedeemed(tx, false) %w", err)
+		}
+		wallet.filter.Add(bytes)
+	}
+
+	wallet.privKey = privekey
 	return wallet, nil
 }
 
@@ -134,19 +154,21 @@ func (l *DBNativeWallet) derivePrivateKey(version uint) (*secp256k1.PrivateKey, 
 }
 
 func (l *DBNativeWallet) RotatePubkey(tx *sql.Tx, db database.Database) error {
-	version, err := db.RotateNewPubkey(tx)
+
+	expiration := time.Now().Add(ExpirationOfPubkeyHours * time.Hour)
+	version, err := db.RotateNewPubkey(tx, expiration.Unix())
 	if err != nil {
 		return fmt.Errorf("github.com/elnosh/gonuts.%w", err)
 	}
 
-	privKey, err := l.derivePrivateKey(version)
+	privKey, err := l.derivePrivateKey(l.PubkeyVersion.VersionNum)
 
 	if err != nil {
 		return fmt.Errorf("l.derivePrivateKey(version) %w", err)
 	}
 
 	l.CurrentPubkey = privKey.PubKey()
-	l.pubkeyVersion = version
+	l.PubkeyVersion = version
 	return nil
 }
 
@@ -156,7 +178,7 @@ func (l *DBNativeWallet) GetActivePubkey() string {
 
 func (l *DBNativeWallet) StoreEcash(proofs cashu.Proofs, tx *sql.Tx, db database.Database) error {
 	now := time.Now().Unix()
-	err := db.AddProofs(tx, proofs, l.pubkeyVersion, false, uint64(now))
+	err := db.AddProofs(tx, proofs, l.PubkeyVersion.VersionNum, false, uint64(now))
 	if err != nil {
 		return fmt.Errorf("db.AddProofs(proofs, false, now) %w", err)
 	}
@@ -255,7 +277,7 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 		return token.Proofs(), fmt.Errorf("wallet.GetAllKeysets(token.Mint()) %w", err)
 	}
 
-	lockedEcashPrivateKey, err := l.derivePrivateKey(l.pubkeyVersion)
+	lockedEcashPrivateKey, err := l.derivePrivateKey(l.PubkeyVersion.VersionNum)
 
 	if err != nil {
 		return token.Proofs(), fmt.Errorf("l.derivePrivateKey(version) %w", err)
@@ -294,7 +316,7 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 		}
 
 		locktime := time.Unix(p2pkTags.Locktime, 0)
-		now = now.Add(4 * time.Hour)
+		now = now.Add(ExpirationOfPubkeyHours * time.Hour)
 
 		if locktime.Unix() < now.Unix() {
 			return token.Proofs(), fmt.Errorf("Timestamp doesn't have a locktime of 4 hours")
@@ -306,7 +328,26 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 		}
 
 		// TODO - LATER Check Bloom filter if there is a collision and if there is check if it's a secret
-	}
+		bytesC, err := hex.DecodeString(p.C)
+		if err != nil {
+			return token.Proofs(), fmt.Errorf("hex.DecodeString(p.C) %w.", err)
+		}
 
+		// if conflic check if C already Exists
+		if l.filter.TestOrAdd(bytesC) {
+			proofs, err := db.GetProofsByC(tx, []string{p.C})
+			if len(proofs) > 0 {
+				return token.Proofs(), ErrProofAlreadySeen
+			}
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					continue
+				}
+
+				return token.Proofs(), fmt.Errorf("db.GetProofsByC(tx, []string{p.C}) %w.", err)
+			}
+		}
+
+	}
 	return token.Proofs(), nil
 }

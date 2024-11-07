@@ -143,6 +143,34 @@ func (sq SqliteDB) GetProofsByPubkeyVersion(tx *sql.Tx, pubkey uint) (cashu.Proo
 	return proofs, nil
 }
 
+func (sq SqliteDB) GetProofsByRedeemed(tx *sql.Tx, redeemed bool) (cashu.Proofs, error) {
+	var proofs cashu.Proofs
+
+	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness FROM stored_proofs WHERE redeemed = ?")
+	if err != nil {
+		return proofs, fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(redeemed)
+	if err != nil {
+		return proofs, fmt.Errorf(`stmt.Query(pubkey). %w`, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p cashu.Proof
+		err = rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness)
+		if err != nil {
+			return proofs, fmt.Errorf(`ows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness) %w`, err)
+		}
+
+		proofs = append(proofs, p)
+	}
+
+	return proofs, nil
+}
+
 func (sq SqliteDB) GetProofsByC(tx *sql.Tx, Cs []string) (cashu.Proofs, error) {
 	var proofs cashu.Proofs
 	// Create the placeholders for the IN clause
@@ -231,7 +259,9 @@ func (sq SqliteDB) ChangeRedeemState(tx *sql.Tx, Cs []string, redeem bool) error
 	return nil
 }
 
-func (sq SqliteDB) RotateNewPubkey(tx *sql.Tx) (uint, error) {
+func (sq SqliteDB) RotateNewPubkey(tx *sql.Tx, expiration int64) (CurrentPubkey, error) {
+
+	var currentPubkey CurrentPubkey
 
 	updateQuery := `
     UPDATE cashu_pubkey 
@@ -242,40 +272,38 @@ func (sq SqliteDB) RotateNewPubkey(tx *sql.Tx) (uint, error) {
 	insertAndSelectQuery := `
         INSERT INTO cashu_pubkey (created_at, active)
         VALUES ($1, true)
-        RETURNING version;
+        RETURNING version, created_at;
     `
 
 	_, err := tx.Exec(updateQuery)
 	if err != nil {
-		return 0, fmt.Errorf(`tx.Exec(updateQuery) %w`, err)
+		return currentPubkey, fmt.Errorf(`tx.Exec(updateQuery) %w`, err)
 	}
 
-	now := time.Now().Unix()
-
-	var version uint
-	err = tx.QueryRow(insertAndSelectQuery, now).Scan(&version)
+	err = tx.QueryRow(insertAndSelectQuery, expiration).Scan(&currentPubkey.VersionNum, &currentPubkey.Expiration)
 	if err != nil {
-		return 0, fmt.Errorf(`tx.QueryRow(insertAndSelectQuery, now) %w`, err)
+		return currentPubkey, fmt.Errorf(`tx.QueryRow(insertAndSelectQuery, now) %w`, err)
 	}
 
-	return version, nil
+	return currentPubkey, nil
 }
-func (sq SqliteDB) GetActivePubkey(tx *sql.Tx) (uint, error) {
-	var version uint = 0
 
-	stmt, err := tx.Prepare("SELECT version FROM cashu_pubkey WHERE active = true")
+func (sq SqliteDB) GetActivePubkey(tx *sql.Tx) (CurrentPubkey, error) {
+	var currentPubkey CurrentPubkey
+
+	stmt, err := tx.Prepare("SELECT version, created_at FROM cashu_pubkey WHERE active = true")
 	if err != nil {
-		return version, fmt.Errorf("sq.Db.Prepare(). %w", err)
+		return currentPubkey, fmt.Errorf("sq.Db.Prepare(). %w", err)
 	}
 	defer stmt.Close()
 
 	// Create a record to hold the result
-	err = stmt.QueryRow().Scan(&version)
+	err = stmt.QueryRow().Scan(&currentPubkey.VersionNum, &currentPubkey.Expiration)
 	if err != nil {
-		return version, fmt.Errorf("stmt.QueryRow(hash).Scan %w", err)
+		return currentPubkey, fmt.Errorf("stmt.QueryRow(hash).Scan %w", err)
 	}
 
-	return version, nil
+	return currentPubkey, nil
 }
 func (sq SqliteDB) GetTrustedMints(tx *sql.Tx) ([]string, error) {
 	var mints []string
