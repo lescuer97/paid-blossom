@@ -92,16 +92,16 @@ func (sq SqliteDB) GetBlobLength(hash []byte) (uint64, error) {
 	}
 	return length, nil
 }
-func (sq SqliteDB) AddProofs(tx *sql.Tx, data cashu.Proofs, pubkey_version uint, redeemed bool, created_at uint64) error {
+func (sq SqliteDB) AddLockedProofs(tx *sql.Tx, token cashu.Token, pubkey_version uint, redeemed bool, created_at uint64) error {
 
-	stmt, err := tx.Prepare("INSERT INTO stored_proofs (amount, id, secret, C, witness, redeemed, created_at, pubkey_version) values (?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO locked_proofs (amount, id, secret, C, witness, redeemed, created_at, pubkey_version, mint) values (?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
-		return fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
+		return fmt.Errorf(`tx.Prepare("INSERT INTO locked_proofs (amount, id, s. %w`, err)
 	}
 	defer stmt.Close()
 
-	for _, proof := range data {
-		_, err = stmt.Exec(proof.Amount, proof.Id, proof.Secret, proof.C, proof.Witness, redeemed, created_at, pubkey_version)
+	for _, proof := range token.Proofs() {
+		_, err = stmt.Exec(proof.Amount, proof.Id, proof.Secret, proof.C, proof.Witness, redeemed, created_at, pubkey_version, token.Mint())
 		if err != nil {
 			return fmt.Errorf("stmt.Exec(): %w", err)
 		}
@@ -109,12 +109,12 @@ func (sq SqliteDB) AddProofs(tx *sql.Tx, data cashu.Proofs, pubkey_version uint,
 	return nil
 }
 
-func (sq SqliteDB) GetProofsByPubkeyVersion(tx *sql.Tx, pubkey uint) (cashu.Proofs, error) {
+func (sq SqliteDB) GetLockedProofsByPubkeyVersion(tx *sql.Tx, pubkey uint) (cashu.Proofs, error) {
 	var proofs cashu.Proofs
 
-	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness FROM stored_proofs WHERE pubkey_version = ?")
+	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness FROM locked_proofs WHERE pubkey_version = ?")
 	if err != nil {
-		return proofs, fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
+		return proofs, fmt.Errorf(`tx.Prepare("SELECT amount, id, secret, C, witness FROM locked_proofs. %w`, err)
 	}
 	defer stmt.Close()
 
@@ -137,12 +137,12 @@ func (sq SqliteDB) GetProofsByPubkeyVersion(tx *sql.Tx, pubkey uint) (cashu.Proo
 	return proofs, nil
 }
 
-func (sq SqliteDB) GetProofsByRedeemed(tx *sql.Tx, redeemed bool) (cashu.Proofs, error) {
-	var proofs cashu.Proofs
+func (sq SqliteDB) GetLockedProofsByRedeemed(tx *sql.Tx, redeemed bool) (map[string]cashu.Proofs, error) {
+	proofs := make(map[string]cashu.Proofs)
 
-	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness FROM stored_proofs WHERE redeemed = ?")
+	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness FROM locked_proofs WHERE redeemed = ?")
 	if err != nil {
-		return proofs, fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
+		return proofs, fmt.Errorf(`tx.Prepare("SELECT amount, id, secret, C. %w`, err)
 	}
 	defer stmt.Close()
 
@@ -154,18 +154,19 @@ func (sq SqliteDB) GetProofsByRedeemed(tx *sql.Tx, redeemed bool) (cashu.Proofs,
 
 	for rows.Next() {
 		var p cashu.Proof
-		err = rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness)
+		var mint string
+		err = rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness, &mint)
 		if err != nil {
-			return proofs, fmt.Errorf(`ows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness) %w`, err)
+			return proofs, fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness, &mint) %w`, err)
 		}
 
-		proofs = append(proofs, p)
+		proofs[mint] = append(proofs[mint], p)
 	}
 
 	return proofs, nil
 }
 
-func (sq SqliteDB) GetProofsByC(tx *sql.Tx, Cs []string) (cashu.Proofs, error) {
+func (sq SqliteDB) GetLockedProofsByC(tx *sql.Tx, Cs []string) (cashu.Proofs, error) {
 	var proofs cashu.Proofs
 	// Create the placeholders for the IN clause
 	placeholders := make([]string, len(Cs))
@@ -174,13 +175,13 @@ func (sq SqliteDB) GetProofsByC(tx *sql.Tx, Cs []string) (cashu.Proofs, error) {
 	}
 
 	query := fmt.Sprintf(
-		"SELECT amount, id, secret, C, witness FROM stored_proofs WHERE C IN (%s)",
+		"SELECT amount, id, secret, C, witness FROM locked_proofs WHERE C IN (%s)",
 		strings.Join(placeholders, ","),
 	)
 
 	stmt, err := tx.Prepare(query)
 	if err != nil {
-		return proofs, fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
+		return proofs, fmt.Errorf(`tx.Prepare(query). %w`, err)
 	}
 	defer stmt.Close()
 
@@ -336,11 +337,50 @@ func (sq SqliteDB) AddTrustedMint(tx *sql.Tx, url string) error {
 	}
 	return nil
 }
+func (sq SqliteDB) SetKeysetCounter(tx *sql.Tx, counter KeysetCounter) error {
+	stmt, err := tx.Prepare("INSERT INTO trusted_mints (keyset_id, counter) values (?,?)")
+	if err != nil {
+		return fmt.Errorf("sq.Db.Prepare(). %w", err)
+	}
+	defer stmt.Close()
+
+	// Create a record to hold the result
+	_, err = stmt.Exec(counter.KeysetId, counter.Counter)
+	if err != nil {
+		return fmt.Errorf("stmt.Query() %w", err)
+	}
+	return nil
+}
+
+func (sq SqliteDB) GetKeysetCounter(tx *sql.Tx, id string) (KeysetCounter, error) {
+	var counter KeysetCounter
+
+	stmt, err := tx.Prepare("SELECT keyset_id, counter WHERE keyset_id = ?")
+	if err != nil {
+		return counter, fmt.Errorf(`SELECT keyset_id, counter WHERE keyset_id = ?. %w`, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(id)
+	if err != nil {
+		return counter, fmt.Errorf(`stmt.Query(pubkey). %w`, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		err = rows.Scan(&counter.KeysetId, &counter.Counter)
+		if err != nil {
+			return counter, fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness, &mint) %w`, err)
+		}
+	}
+
+	return counter, nil
+}
 
 func DatabaseSetup(ctx context.Context, databaseDir string, migrationDir string) (SqliteDB, error) {
 	var sqlitedb SqliteDB
 
-	db, err := sql.Open("sqlite3", databaseDir+"/"+"app.db")
+	db, err := sql.Open("sqlite3", databaseDir+"/"+"app.db"+"?cache=shared&mode=rwc&_journal_mode=WAL")
 	if err != nil {
 		return sqlitedb, fmt.Errorf(`sql.Open("sqlite3", string + "app.db" ). %w`, err)
 
@@ -354,7 +394,6 @@ func DatabaseSetup(ctx context.Context, databaseDir string, migrationDir string)
 		log.Fatalf("Error running migrations: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL;")
 
 	sqlitedb.Db = db
 

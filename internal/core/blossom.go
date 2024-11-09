@@ -111,20 +111,17 @@ func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Da
 	}
 
 	// Check Token is valid
-	proofs, err := wallet.VerifyToken(token, tx, db)
+	_, err = wallet.VerifyToken(token, tx, db)
 	if err != nil {
 		log.Printf(`wallet.VerifyToken(token, tx, db) %+v`, err)
 		return err
 	}
 
-	log.Println("AFTER VERIFY")
-
-	err = wallet.StoreEcash(proofs, tx, db)
+	err = wallet.StoreEcash(token, tx, db)
 	if err != nil {
 		log.Printf(`wallet.StoreEcash(proofs, tx, db) %+v`, err)
 		return err
 	}
-	log.Println("AFTER STORAGE")
 
 	// check for upload payment
 	hashHex := hex.EncodeToString(hash[:])

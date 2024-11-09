@@ -48,7 +48,8 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 
 		tx, err := db.BeginTransaction()
 		if err != nil {
-			log.Fatalf("Failed to begin transaction: %v\n", err)
+			c.JSON(500, "Opps! Server error")
+			return
 		}
 
 		// Ensure that the transaction is rolled back in case of a panic or error
@@ -107,7 +108,7 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 			return
 		}
 		// Check Token is valid
-		proofs, err := wallet.VerifyToken(token, tx, db)
+		_, err = wallet.VerifyToken(token, tx, db)
 		if err != nil {
 			log.Printf(`wallet.VerifyToken(token, tx, db) %+v`, err)
 			c.Header(xcashu.Xcashu, encodedPayReq)
@@ -115,7 +116,7 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 			return
 		}
 
-		err = wallet.StoreEcash(proofs, tx, db)
+		err = wallet.StoreEcash(token, tx, db)
 		if err != nil {
 			log.Printf(`wallet.StoreEcash(proofs, tx, db) %+v`, err)
 			c.JSON(400, "payment required")

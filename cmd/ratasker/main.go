@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"ratasker/external/nostr"
@@ -11,6 +12,7 @@ import (
 	"ratasker/internal/routes"
 	"ratasker/internal/utils"
 	"strings"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -82,56 +84,53 @@ func main() {
 
 	routes.RootRoutes(r, &wallet, sqlite, fileHandler)
 	routes.UploadRoutes(r, &wallet, sqlite, fileHandler)
+	go func() {
+		for {
+			log.Println("Before go channel")
+			// Check if expiration of pubkey already happened
+			now := time.Now().Add(-10 * time.Minute).Unix()
+			if now > int64(wallet.PubkeyVersion.Expiration) {
+				// rotate keys up
+				log.Println("Begining key roration")
+				tx, err := sqlite.BeginTransaction()
+				if err != nil {
+					log.Panicf("Could not get a lock on the db. %+v", err)
+				}
+				// Ensure that the transaction is rolled back in case of a panic or error
+				defer func() {
+					if p := recover(); p != nil {
+						tx.Rollback()
+					} else if err != nil {
+						tx.Rollback()
+					} else {
+						err = tx.Commit()
+						if err != nil {
+							log.Printf("\n Failed to commit transaction: %v\n", err)
+						}
+						fmt.Println("Transaction committed successfully.")
+					}
+				}()
 
-	// go func() {
-	// 	for {
-	// 		// Check if expiration of pubkey already happened
-	// 		now := time.Now().Add(-10 * time.Minute).Unix()
-	// 		if now > int64(wallet.PubkeyVersion.Expiration) {
-	// 			// rotate keys up
-	// 			log.Println("Begining key roration")
-	// 			tx, err := sqlite.BeginTransaction()
-	// 			if err != nil {
-	// 				log.Panicf("Could not get a lock on the db. %+v", err)
-	// 			}
-	// 			// Ensure that the transaction is rolled back in case of a panic or error
-	// 			defer func() {
-	// 				if p := recover(); p != nil {
-	// 					tx.Rollback()
-	// 				} else if err != nil {
-	// 					tx.Rollback()
-	// 				} else {
-	// 					err = tx.Commit()
-	// 					if err != nil {
-	// 						log.Printf("\n Failed to commit transaction: %v\n", err)
-	// 					}
-	// 					fmt.Println("Transaction committed successfully.")
-	// 				}
-	// 			}()
-	//
-	// 			err = wallet.RotatePubkey(tx, sqlite)
-	// 			if err != nil {
-	// 				log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
-	// 			}
-	// 			fmt.Println("CHANGING PUBKEY", wallet.PubkeyVersion.Expiration)
-	// 			fmt.Println("Expiration. ", wallet.PubkeyVersion.Expiration)
-	// 			fmt.Println("Version . ", wallet.PubkeyVersion.VersionNum)
-	//
-	// 			fmt.Println("Pubkey. ", wallet.GetActivePubkey())
-	//
-	// 			// TODO
-	// 			err = tx.Commit()
-	// 			if err != nil {
-	// 				log.Printf("\n Failed to commit transaction: %v\n", err)
-	// 			}
-	// 			fmt.Println("Transaction committed successfully.")
-	//
-	// 		}
-	//
-	// 		time.Sleep(10 * time.Second)
-	// 	}
-	//
-	// }()
+				err = wallet.RotatePubkey(tx, sqlite)
+				if err != nil {
+					log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
+				}
+
+				// Redeem all proofs that are not reddemed
+
+				// TODO
+				err = tx.Commit()
+				if err != nil {
+					log.Printf("\n Failed to commit transaction: %v\n", err)
+				}
+				log.Println("Finshed key rotation")
+
+			}
+
+			time.Sleep(20 * time.Second)
+		}
+
+	}()
 
 	log.Println("ratasker started in port 8070")
 	r.Run("0.0.0.0:8070")

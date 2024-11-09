@@ -47,7 +47,8 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 
 		tx, err := db.BeginTransaction()
 		if err != nil {
-			log.Fatalf("Failed to begin transaction: %v\n", err)
+			c.JSON(400, "Malformed request")
+			return
 		}
 
 		// Ensure that the transaction is rolled back in case of a panic or error

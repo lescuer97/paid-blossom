@@ -16,10 +16,11 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/elnosh/gonuts/cashu"
 	"github.com/elnosh/gonuts/cashu/nuts/nut01"
+	"github.com/elnosh/gonuts/cashu/nuts/nut03"
 	"github.com/elnosh/gonuts/cashu/nuts/nut10"
 	"github.com/elnosh/gonuts/cashu/nuts/nut11"
-
-	// "github.com/elnosh/gonuts/cashu/nuts/nut12"
+	"github.com/elnosh/gonuts/cashu/nuts/nut13"
+	"github.com/elnosh/gonuts/crypto"
 	"github.com/elnosh/gonuts/wallet"
 	"github.com/tyler-smith/go-bip39"
 )
@@ -35,13 +36,20 @@ var (
 	ErrCouldNotVerifyDLEQ     = errors.New("Could not verify proof comes from trusted mint")
 	ErrProofIsNotP2PK         = errors.New("Proof is not P2PK")
 	ErrProofAlreadySeen       = errors.New("Proof already seen")
+	ErrKeysetUnitNotSat       = errors.New("Keyset unit is not sat")
 )
 
 type CashuWallet interface {
 	RotatePubkey(tx *sql.Tx, db database.Database) error
 	GetActivePubkey() string
-	StoreEcash(proofs cashu.Proofs, tx *sql.Tx, db database.Database) error
+
+	StoreEcash(token cashu.Token, tx *sql.Tx, db database.Database) error
+	// This follows deterministic secrets for recovery purposes
+	SwapProofs(blindMessages cashu.BlindedMessages, proofs cashu.Proofs, mint string) (cashu.BlindedSignatures, error)
+
 	VerifyToken(token cashu.Token, tx *sql.Tx, db database.Database) (cashu.Proofs, error)
+	MakeBlindMessages(amount uint64, mint string, counter *database.KeysetCounter) (cashu.BlindedMessages, []string, []*secp256k1.PrivateKey, error)
+	GetActiveKeyset(mint_url string) (nut01.Keyset, error)
 }
 
 type DBNativeWallet struct {
@@ -89,7 +97,6 @@ func NewDBLocalWallet(seedWords string, db database.Database) (DBNativeWallet, e
 	mints, err := db.GetTrustedMints(tx)
 	if err != nil {
 		return wallet, fmt.Errorf("db.GetTrustedMints() %w", err)
-
 	}
 
 	// Get all active keys form mints
@@ -101,19 +108,23 @@ func NewDBLocalWallet(seedWords string, db database.Database) (DBNativeWallet, e
 	// Set bloom filter
 	wallet.filter = bloom.NewWithEstimates(1_000_000, 0.01)
 
-	// Get proofs that are not redeemed
-	proofs, err := db.GetProofsByRedeemed(tx, false)
+	// Get proofsPerMint that are not redeemed
+	proofsPerMint, err := db.GetLockedProofsByRedeemed(tx, false)
 	if err != nil {
 		return wallet, fmt.Errorf("db.GetProofsByRedeemed(tx, false) %w", err)
 	}
 
-	for i := 0; i < len(proofs); i++ {
-		bytes, err := hex.DecodeString(proofs[i].C)
-		if err != nil {
-			return wallet, fmt.Errorf("db.GetProofsByRedeemed(tx, false) %w", err)
+	for _, proofs := range proofsPerMint {
+		for i := 0; i < len(proofs); i++ {
+			bytes, err := hex.DecodeString(proofs[i].C)
+			if err != nil {
+				return wallet, fmt.Errorf("db.GetProofsByRedeemed(tx, false) %w", err)
+			}
+			wallet.filter.Add(bytes)
 		}
-		wallet.filter.Add(bytes)
+
 	}
+
 	wallet.privKey = privekey
 
 	// Get pubkey from privkey
@@ -145,16 +156,11 @@ func NewDBLocalWallet(seedWords string, db database.Database) (DBNativeWallet, e
 
 func (l *DBNativeWallet) getActiveKeysFromTrustedMints(mints []string) error {
 	for _, mintUrl := range mints {
-		keys, err := wallet.GetActiveKeysets(mintUrl)
+		_, err := l.GetActiveKeyset(mintUrl)
 		if err != nil {
-			return fmt.Errorf("wallet.GetAllKeysets(mintUrl) %w", err)
+			return fmt.Errorf("l.GetActiveKeyset(mintUrl) %w", err)
 		}
 
-		for _, keyset := range keys.Keysets {
-			if keyset.Unit == "sat" {
-				l.activeKeys[mintUrl] = keyset
-			}
-		}
 	}
 	return nil
 }
@@ -201,9 +207,9 @@ func (l *DBNativeWallet) GetActivePubkey() string {
 	return hex.EncodeToString(l.CurrentPubkey.SerializeCompressed())
 }
 
-func (l *DBNativeWallet) StoreEcash(proofs cashu.Proofs, tx *sql.Tx, db database.Database) error {
+func (l *DBNativeWallet) StoreEcash(token cashu.Token, tx *sql.Tx, db database.Database) error {
 	now := time.Now().Unix()
-	err := db.AddProofs(tx, proofs, l.PubkeyVersion.VersionNum, false, uint64(now))
+	err := db.AddLockedProofs(tx, token, l.PubkeyVersion.VersionNum, false, uint64(now))
 	if err != nil {
 		return fmt.Errorf("db.AddProofs(proofs, false, now) %w", err)
 	}
@@ -332,7 +338,7 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 
 		// Verify that is lock to a private key that I control
 		if !nut11.CanSign(spendCondition, lockedEcashPrivateKey) {
-			return token.Proofs(), fmt.Errorf("CanSign(spendCondition, lockedEcashPrivateKey) %w. %w. Proof: ", err, ErrNotLockedToPubkey, p)
+			return token.Proofs(), fmt.Errorf("CanSign(spendCondition, lockedEcashPrivateKey) %w. %w. Proof: %+v ", err, ErrNotLockedToPubkey, p)
 		}
 		// Verificar que tiene un bloqueo de al menos 4 horas
 		// p2pkTags, err := nut11.ParseP2PKTags(spendCondition.Data.Tags)
@@ -360,7 +366,7 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 
 		// if conflic check if C already Exists
 		if l.filter.TestOrAdd(bytesC) {
-			proofs, err := db.GetProofsByC(tx, []string{p.C})
+			proofs, err := db.GetLockedProofsByC(tx, []string{p.C})
 			if len(proofs) > 0 {
 				return token.Proofs(), fmt.Errorf("proof: %+v, %w", p, ErrProofAlreadySeen)
 			}
@@ -375,4 +381,83 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 
 	}
 	return token.Proofs(), nil
+}
+
+func (l *DBNativeWallet) MakeBlindMessages(amount uint64, mint string, counter *database.KeysetCounter) (cashu.BlindedMessages, []string, []*secp256k1.PrivateKey, error) {
+	tmpCount := counter.Counter
+	proofAmount := cashu.AmountSplit(amount)
+	secrets := []string{}
+	blindingFactors := []*secp256k1.PrivateKey{}
+	blindMessages := cashu.BlindedMessages{}
+
+	for _, amount := range proofAmount {
+		derivedKey, err := nut13.DeriveKeysetPath(l.privKey, counter.KeysetId)
+		if err != nil {
+			return blindMessages, secrets, blindingFactors, fmt.Errorf("nut13.DeriveKeysetPath(l.privKey) %w", err)
+		}
+		secret, err := nut13.DeriveSecret(derivedKey, tmpCount)
+		if err != nil {
+			return blindMessages, secrets, blindingFactors, fmt.Errorf("nut13.DeriveSecret(derivedKey, tmpCount) %w", err)
+		}
+
+		blindingFactor, err := nut13.DeriveBlindingFactor(derivedKey, tmpCount)
+		if err != nil {
+			return blindMessages, secrets, blindingFactors, fmt.Errorf("nut13.DeriveBlindingFactor(derivedKey, tmpCount) %w", err)
+		}
+
+		B_Pubkey, B_Privkey, err := crypto.BlindMessage(secret, blindingFactor)
+		if err != nil {
+			return blindMessages, secrets, blindingFactors, fmt.Errorf("crypto.BlindMessage(secret, blindingFactor ) %w", err)
+		}
+
+		value, ok := l.activeKeys[mint]
+
+		if !ok {
+			return blindMessages, secrets, blindingFactors, fmt.Errorf("no active keyset for swaping %w", err)
+		}
+
+		blindMessage := cashu.NewBlindedMessage(value.Id, amount, B_Pubkey)
+
+		blindMessages = append(blindMessages, blindMessage)
+		secrets = append(secrets, secret)
+		blindingFactors = append(blindingFactors, B_Privkey)
+		counter.Counter += 1
+	}
+
+	cashu.SortBlindedMessages(blindMessages, secrets, blindingFactors)
+
+	return blindMessages, secrets, blindingFactors, nil
+}
+func (l *DBNativeWallet) SwapProofs(blindMessages cashu.BlindedMessages, proofs cashu.Proofs, mint string) (cashu.BlindedSignatures, error) {
+	request := nut03.PostSwapRequest{
+		Inputs:  proofs,
+		Outputs: blindMessages,
+	}
+
+	response, err := wallet.PostSwap(mint, request)
+	if err != nil {
+		return response.Signatures, fmt.Errorf("wallet.PostSwap(mint, request) %w", err)
+	}
+	// nut12.VerifyBlindSignatureDLEQ()
+
+	return response.Signatures, nil
+}
+
+func (l *DBNativeWallet) GetActiveKeyset(mint_url string) (nut01.Keyset, error) {
+	var keyset nut01.Keyset
+	keys, err := wallet.GetActiveKeysets(mint_url)
+	if err != nil {
+		return keyset, fmt.Errorf("wallet.GetAllKeysets(mintUrl) %w", err)
+	}
+
+	for _, keyset := range keys.Keysets {
+		if keyset.Unit == "sat" {
+			l.activeKeys[mint_url] = keyset
+		} else {
+			return keyset, ErrKeysetUnitNotSat
+
+		}
+	}
+
+	return keyset, nil
 }

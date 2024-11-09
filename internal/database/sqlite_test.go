@@ -2,10 +2,14 @@ package database
 
 import (
 	"context"
-	"github.com/elnosh/gonuts/cashu"
+	"encoding/hex"
 	"testing"
 	"time"
+
+	"github.com/elnosh/gonuts/cashu"
 )
+
+const TEST_MINT = "http://localhost:8080"
 
 func TestRotatePubkey(t *testing.T) {
 	ctx := context.Background()
@@ -61,31 +65,36 @@ func TestAddProofsAndGetForC(t *testing.T) {
 
 	proofs := cashu.Proofs{
 		{
-			Id:      "test",
+			Id:      hex.EncodeToString([]byte("test")),
 			Amount:  2,
 			Secret:  "secret tedst1",
-			C:       "Ctest",
+			C:       hex.EncodeToString([]byte("Ctest")),
 			Witness: "",
 		}, {
-			Id:      "test",
+			Id:      hex.EncodeToString([]byte("test")),
 			Amount:  2,
 			Secret:  "secret tedst2",
-			C:       "Ctest2",
+			C:       hex.EncodeToString([]byte("Ctest2")),
 			Witness: "",
 		},
 	}
 
+	token1, err := cashu.NewTokenV4(proofs, TEST_MINT, cashu.Sat, false)
+	if err != nil {
+		t.Fatalf("cashu.NewTokenV4(proofs,TEST_MINT, cashu.Sat, false) %+v", err)
+	}
+
 	now := time.Now().Unix()
-	err = sqlite.AddProofs(tx, proofs, current.VersionNum, false, uint64(now))
+	err = sqlite.AddLockedProofs(tx, token1, current.VersionNum, false, uint64(now))
 	if err != nil {
 		t.Fatalf("sqlite.AddProofs(proofs,version, false, uint64(now) %+v", err)
 	}
 
-	newProofs, err := sqlite.GetProofsByC(tx, []string{"Ctest"})
+	newProofs, err := sqlite.GetLockedProofsByC(tx, []string{hex.EncodeToString([]byte("Ctest2"))})
 	if err != nil {
 		t.Fatalf(`sqlite.GetProofsByC([]string{"Ctest"}) %+v`, err)
 	}
-	if newProofs[0].C != "Ctest" {
+	if newProofs[0].C != hex.EncodeToString([]byte("Ctest2")) {
 		t.Errorf(`Proof is wrong C %+v`, err)
 	}
 	if len(newProofs) != 1 {
@@ -121,22 +130,27 @@ func TestAddProofsAndGetViaPubkey(t *testing.T) {
 
 	proofs := cashu.Proofs{
 		{
-			Id:      "test",
+			Id:      hex.EncodeToString([]byte("test")),
 			Amount:  2,
 			Secret:  "secret tedst1`",
-			C:       "Ctest",
+			C:       hex.EncodeToString([]byte("Ctest")),
 			Witness: "",
 		}, {
-			Id:      "test",
+			Id:      hex.EncodeToString([]byte("test")),
 			Amount:  2,
 			Secret:  "secret tedstswd",
-			C:       "Ctest2",
+			C:       hex.EncodeToString([]byte("Ctest2")),
 			Witness: "",
 		},
 	}
 
+	token1, err := cashu.NewTokenV4(proofs, TEST_MINT, cashu.Sat, false)
+	if err != nil {
+		t.Fatalf("cashu.NewTokenV4(proofs,TEST_MINT, cashu.Sat, false) %+v", err)
+	}
+
 	now := time.Now().Unix()
-	err = sqlite.AddProofs(tx, proofs, current.VersionNum, false, uint64(now))
+	err = sqlite.AddLockedProofs(tx, token1, current.VersionNum, false, uint64(now))
 	if err != nil {
 		t.Fatalf("sqlite.AddProofs(proofs,version, false, uint64(now) %+v", err)
 	}
@@ -152,30 +166,34 @@ func TestAddProofsAndGetViaPubkey(t *testing.T) {
 
 	proofs2 := cashu.Proofs{
 		{
-			Id:      "test",
+			Id:      hex.EncodeToString([]byte("test")),
 			Amount:  2,
 			Secret:  "secret tedst3",
-			C:       "Ctest3",
+			C:       hex.EncodeToString([]byte("ctest34")),
 			Witness: "",
 		}, {
-			Id:     "test",
+			Id:     hex.EncodeToString([]byte("test")),
 			Amount: 2,
 			Secret: "secret tedst4",
-			C:      "Ctest24",
+			C:      hex.EncodeToString([]byte("ctest23")),
 		},
+	}
+	token2, err := cashu.NewTokenV4(proofs2, TEST_MINT, cashu.Sat, false)
+	if err != nil {
+		t.Fatalf("cashu.NewTokenV4(proofs,TEST_MINT, cashu.Sat, false) %+v", err)
 	}
 
 	now = time.Now().Unix()
-	err = sqlite.AddProofs(tx, proofs2, current.VersionNum, false, uint64(now))
+	err = sqlite.AddLockedProofs(tx, token2, current.VersionNum, false, uint64(now))
 	if err != nil {
 		t.Fatalf("sqlite.AddProofs(proofs,version, false, uint64(now) %+v", err)
 	}
 
-	newProofs, err := sqlite.GetProofsByPubkeyVersion(tx, current.VersionNum)
+	newProofs, err := sqlite.GetLockedProofsByPubkeyVersion(tx, current.VersionNum)
 	if err != nil {
 		t.Fatalf(`sqlite.GetProofsByC([]string{"Ctest"}) %+v`, err)
 	}
-	if newProofs[0].C != "Ctest3" {
+	if newProofs[0].C != hex.EncodeToString([]byte("ctest34")) {
 		t.Errorf(`Proof is wrong C %+v`, err)
 	}
 	if len(newProofs) != 2 {
