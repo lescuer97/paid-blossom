@@ -74,8 +74,6 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database) error {
 			return fmt.Errorf("wallet.MakeBlindMessages(proofs, mint_url). %w", err)
 		}
 
-		fmt.Printf("\n counter %+v \n", counter)
-
 		blindSigs, err := wallet.SwapProofs(blindMessages, proofsToSwap, mint_url)
 		if err != nil {
 			return fmt.Errorf("wallet.SwapProofs(blindMessages, proofs, mint_url). %w", err)
@@ -120,14 +118,21 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database) error {
 			NewProofs = append(NewProofs, proof)
 		}
 
-		// crypto.Un
+		// Cs from used Proofs
+		Cs := []string{}
+		for i := 0; i < len(proofsToSwap); i++ {
+			Cs = append(Cs, proofsToSwap[i].C)
+		}
 
-		// wallet.S
-		// bytes, err := hex.DecodeString(proofs[i].C)
-		// if err != nil {
-		// 	return wallet, fmt.Errorf("db.GetProofsByRedeemed(tx, false) %w", err)
-		// }
-		// wallet.filter.Add(bytes)
+		err = db.ChangeLockedProofsRedeem(tx, Cs, true)
+		if err != nil {
+			return fmt.Errorf("db.ChangeLockProofRedeem(tx, Cs,true ) %w", err)
+		}
+
+		err = db.AddProofs(tx, NewProofs, mint_url)
+		if err != nil {
+			return fmt.Errorf("db.AddProofs(tx, NewProofs, mint_url ) %w", err)
+		}
 
 	}
 	return nil

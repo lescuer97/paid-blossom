@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS locked_proofs(
     FOREIGN KEY (pubkey_version) REFERENCES cashu_pubkey(version)
 );
 
-CREATE TABLE IF NOT EXISTS swaped_proofs(
+CREATE TABLE IF NOT EXISTS swapped_proofs(
 	amount INTEGER NOT NULL,
 	id text NOT NULL,
 	secret text NOT NULL UNIQUE,

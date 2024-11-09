@@ -31,7 +31,10 @@ type Database interface {
 	GetLockedProofsByC(tx *sql.Tx, Cs []string) (cashu.Proofs, error)
 	// should return proofs separated by the mint that they come from
 	GetLockedProofsByRedeemed(tx *sql.Tx, redeemed bool) (map[string]cashu.Proofs, error)
-	ChangeRedeemState(tx *sql.Tx, Cs []string, redeem bool) error
+	ChangeLockedProofsRedeem(tx *sql.Tx, Cs []string, redeem bool) error
+
+	//For proofs that have already been swapped
+	AddProofs(tx *sql.Tx, proofs cashu.Proofs, mint string) error
 
 	AddTrustedMint(tx *sql.Tx, url string) error
 	GetTrustedMints(tx *sql.Tx) ([]string, error)

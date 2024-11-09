@@ -384,7 +384,6 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 }
 
 func (l *DBNativeWallet) MakeBlindMessages(amount uint64, mint string, counter *database.KeysetCounter) (cashu.BlindedMessages, []string, []*secp256k1.PrivateKey, error) {
-	tmpCount := counter.Counter
 	proofAmount := cashu.AmountSplit(amount)
 	secrets := []string{}
 	blindingFactors := []*secp256k1.PrivateKey{}
@@ -395,12 +394,12 @@ func (l *DBNativeWallet) MakeBlindMessages(amount uint64, mint string, counter *
 		if err != nil {
 			return blindMessages, secrets, blindingFactors, fmt.Errorf("nut13.DeriveKeysetPath(l.privKey) %w", err)
 		}
-		secret, err := nut13.DeriveSecret(derivedKey, tmpCount)
+		secret, err := nut13.DeriveSecret(derivedKey, counter.Counter)
 		if err != nil {
 			return blindMessages, secrets, blindingFactors, fmt.Errorf("nut13.DeriveSecret(derivedKey, tmpCount) %w", err)
 		}
 
-		blindingFactor, err := nut13.DeriveBlindingFactor(derivedKey, tmpCount)
+		blindingFactor, err := nut13.DeriveBlindingFactor(derivedKey, counter.Counter)
 		if err != nil {
 			return blindMessages, secrets, blindingFactors, fmt.Errorf("nut13.DeriveBlindingFactor(derivedKey, tmpCount) %w", err)
 		}

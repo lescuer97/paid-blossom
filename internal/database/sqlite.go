@@ -209,7 +209,7 @@ func (sq SqliteDB) GetLockedProofsByC(tx *sql.Tx, Cs []string) (cashu.Proofs, er
 	return proofs, nil
 }
 
-func (sq SqliteDB) ChangeRedeemState(tx *sql.Tx, Cs []string, redeem bool) error {
+func (sq SqliteDB) ChangeLockedProofsRedeem(tx *sql.Tx, Cs []string, redeem bool) error {
 	var proofs cashu.Proofs
 
 	// Create the placeholders for the IN clause
@@ -375,6 +375,24 @@ func (sq SqliteDB) GetKeysetCounter(tx *sql.Tx, id string) (KeysetCounter, error
 	}
 
 	return counter, nil
+}
+
+func (sq SqliteDB) AddProofs(tx *sql.Tx, proofs cashu.Proofs, mint string) error {
+
+	now := time.Now().Unix()
+	stmt, err := tx.Prepare("INSERT INTO swapped_proofs (amount, id, secret, C, witness, spent, created_at, mint) values (?, ?, ?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		return fmt.Errorf(`tx.Prepare("INSERT INTO swapped_proofs (amount, id, s. %w`, err)
+	}
+	defer stmt.Close()
+
+	for _, proof := range proofs {
+		_, err = stmt.Exec(proof.Amount, proof.Id, proof.Secret, proof.C, proof.Witness, false, now, mint)
+		if err != nil {
+			return fmt.Errorf("stmt.Exec(): %w", err)
+		}
+	}
+	return nil
 }
 
 func DatabaseSetup(ctx context.Context, databaseDir string, migrationDir string) (SqliteDB, error) {
