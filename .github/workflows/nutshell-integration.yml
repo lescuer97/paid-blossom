@@ -18,6 +18,8 @@ jobs:
       #     sleep 5
       #     curl localhost:3338/v1/info
 
+
+      - uses: actions/checkout@v4
       # Setup golang
       - uses: actions/setup-go@v5
         with:
