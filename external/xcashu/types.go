@@ -3,10 +3,7 @@ package xcashu
 import (
 	"errors"
 	"fmt"
-	"slices"
-
 	"github.com/elnosh/gonuts/cashu"
-	w "github.com/elnosh/gonuts/wallet"
 )
 
 const Xcashu = "x-cashu"
@@ -27,7 +24,6 @@ type PaymentQuoteResponse struct {
 
 var (
 	ErrNotEnoughtSats = errors.New("Not enough sats")
-	ErrNotTrustedMint = errors.New("Not from trusted Mint")
 )
 
 func QuoteAmountToPay(Blength uint64, satPerMB uint64) uint64 {
@@ -46,28 +42,17 @@ func QuoteAmountToPay(Blength uint64, satPerMB uint64) uint64 {
 	return res
 }
 
-func VerifyTokenIsValid(tokenHeader string, amountToPay uint64, wallet *w.Wallet) error {
+func ParseTokenHeader(tokenHeader string, amountToPay uint64) (cashu.Token, error) {
 	token, err := cashu.DecodeToken(tokenHeader)
 
 	if err != nil {
-		return fmt.Errorf("cashu.DecodeToken(tokenHeader) %w", err)
+		return token, fmt.Errorf("cashu.DecodeToken(tokenHeader) %w", err)
 	}
 
 	if token.Amount() < amountToPay {
-		return ErrNotEnoughtSats
+		return token, ErrNotEnoughtSats
 	}
 
-	if !slices.Contains(wallet.TrustedMints(), token.Mint()) {
-		return ErrNotTrustedMint
-	}
-
-	fmt.Printf("\n Token: %+v", token)
-	// TODO - Check if it is locked to the pubkey of the wallet
-
-	_, err = wallet.Receive(token, false)
-	if err != nil {
-		return fmt.Errorf("wallet.Receive(token, false) %w", err)
-	}
-	return nil
+	return token, nil
 
 }

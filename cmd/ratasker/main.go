@@ -2,19 +2,21 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"ratasker/external/nostr"
+	"ratasker/internal/cashu"
 	"ratasker/internal/database"
+	"ratasker/internal/io"
 	"ratasker/internal/routes"
 	"ratasker/internal/utils"
 	"strings"
+	"time"
 
-	"github.com/joho/godotenv"
-
-	w "github.com/elnosh/gonuts/wallet"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 var (
@@ -39,45 +41,38 @@ func main() {
 	if err != nil {
 		log.Fatal("Something happened while loading the env file")
 	}
+	homeDir, err := utils.GetRastaskerHomeDirectory()
+	if err != nil {
+		log.Panicf(`utils.GetRastaskerHomeDirectory(). %+v`, err)
+	}
 
-	sqlite, err := database.DatabaseSetup(ctx, "migrations")
+	sqlite, err := database.DatabaseSetup(ctx, homeDir, "migrations")
 	defer sqlite.Db.Close()
 
 	if err != nil {
-		log.Panicf(`database.DatabaseSetup(ctx, "migrations"). %w`, err)
+		log.Panicf(`database.DatabaseSetup(ctx, "migrations"). %+v`, err)
 	}
 
 	r := gin.Default()
-
-	homeDir, err := utils.GetRastaskerHomeDirectory()
-	if err != nil {
-		log.Panicf(`utils.GetRastaskerHomeDirectory(). %w`, err)
-	}
-
-	pathToData := homeDir + "/" + "data"
-
-	err = utils.MakeSureFilePathExists(pathToData, "")
-	if err != nil {
-		log.Panicf(`utils.MakeSureFilePathExists(pathToData, ""). %w`, err)
-	}
 
 	pathToCashu := homeDir + "/" + "cashu"
 
 	err = utils.MakeSureFilePathExists(pathToCashu, "")
 	if err != nil {
-		log.Panicf(`utils.MakeSureFilePathExists(pathToData, ""). %w`, err)
+		log.Panicf(`utils.MakeSureFilePathExists(pathToData, ""). %+v`, err)
 	}
 
-	// Setup wallet
-	config := w.Config{
-		WalletPath:     pathToCashu,
-		CurrentMintURL: "https://mutinynet.nutmix.cash",
-	}
-
-	wallet, err := w.LoadWallet(config)
+	fileHandler, err := io.MakeFileSystemHandler()
 	if err != nil {
-		log.Panicf(`w.LoadWallet(config). %wa`, err)
+		log.Panicf(`io.MakeFileSystemHandler(). %+v`, err)
 	}
+
+	// try to load new wallet for test
+	wallet, err := cashu.NewDBLocalWallet(os.Getenv("SEED"), sqlite)
+	if err != nil {
+		log.Panicf(`cashu.NewDBLocalWallet(os.Getenv("SEED"), sqlite) %+va`, err)
+	}
+
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins: true, // Allow all origins
 		AllowMethods:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -87,8 +82,50 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	routes.RootRoutes(r, wallet, sqlite)
-	routes.UploadRoutes(r, wallet, sqlite, pathToData)
+	routes.RootRoutes(r, &wallet, sqlite, fileHandler)
+	routes.UploadRoutes(r, &wallet, sqlite, fileHandler)
+	go func() {
+		for {
+			log.Println("Before go channel")
+			// Check if expiration of pubkey already happened
+			now := time.Now().Add(-10 * time.Minute).Unix()
+			if now > int64(wallet.PubkeyVersion.Expiration) {
+				// rotate keys up
+				log.Println("Begining key roration")
+				tx, err := sqlite.BeginTransaction()
+				if err != nil {
+					log.Panicf("Could not get a lock on the db. %+v", err)
+				}
+				// Ensure that the transaction is rolled back in case of a panic or error
+				defer func() {
+					if p := recover(); p != nil {
+						tx.Rollback()
+					} else if err != nil {
+						tx.Rollback()
+					} else {
+						err = tx.Commit()
+						if err != nil {
+							log.Printf("\n Failed to commit transaction: %v\n", err)
+						}
+						fmt.Println("Transaction committed successfully.")
+					}
+				}()
+
+				err = wallet.RotatePubkey(tx, sqlite)
+				if err != nil {
+					log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
+				}
+
+				// Redeem all proofs that are not reddemed
+
+				// TODO
+
+			}
+
+			time.Sleep(20 * time.Second)
+		}
+
+	}()
 
 	log.Println("ratasker started in port 8070")
 	r.Run("0.0.0.0:8070")
