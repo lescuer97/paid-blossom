@@ -119,11 +119,6 @@ func main() {
 				// Redeem all proofs that are not reddemed
 
 				// TODO
-				err = tx.Commit()
-				if err != nil {
-					log.Printf("\n Failed to commit transaction: %v\n", err)
-				}
-				log.Println("Finshed key rotation")
 
 			}
 

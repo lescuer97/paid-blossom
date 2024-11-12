@@ -1,7 +1,9 @@
 package core
 
 import (
+	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"ratasker/internal/cashu"
@@ -55,18 +57,25 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database) error {
 
 	proofsPerMint, err := db.GetLockedProofsByRedeemed(tx, false)
 	if err != nil {
-		return fmt.Errorf("db.GetProofsByRedeemed(tx, false ). %w", err)
+		return fmt.Errorf("db.GetLockedProofsByRedeemed(tx, false). %w", err)
 	}
 
 	for mint_url, proofsToSwap := range proofsPerMint {
-
 		keyset, err := wallet.GetActiveKeyset(mint_url)
 		if err != nil {
 			return fmt.Errorf("wallet.GetActiveKeyset(mint_url). %w", err)
 		}
+
 		counter, err := db.GetKeysetCounter(tx, keyset.Id)
+
 		if err != nil {
-			return fmt.Errorf("db.GetKeysetCounter(tx,keyset.Id ). %w", err)
+			if errors.Is(err, sql.ErrNoRows) {
+				log.Println("Setting counter to 0 for keysetid: ", keyset.Id)
+				counter.Counter = 0
+				counter.KeysetId = keyset.Id
+			} else {
+				return fmt.Errorf("db.GetKeysetCounter(tx,keyset.Id ). %w", err)
+			}
 		}
 
 		blindMessages, secrets, keys, err := wallet.MakeBlindMessages(proofsToSwap.Amount(), mint_url, &counter)
@@ -126,7 +135,7 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database) error {
 
 		err = db.ChangeLockedProofsRedeem(tx, Cs, true)
 		if err != nil {
-			return fmt.Errorf("db.ChangeLockProofRedeem(tx, Cs,true ) %w", err)
+			return fmt.Errorf("db.ChangeLockedProofsRedeem(tx, Cs, true) %w", err)
 		}
 
 		err = db.AddProofs(tx, NewProofs, mint_url)
@@ -135,5 +144,6 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database) error {
 		}
 
 	}
+
 	return nil
 }

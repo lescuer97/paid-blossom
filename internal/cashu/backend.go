@@ -217,22 +217,6 @@ func (l *DBNativeWallet) StoreEcash(token cashu.Token, tx *sql.Tx, db database.D
 	return nil
 }
 
-// func (l *DBNativeWallet) redeemEcash(db database.Database) error {
-//     proofs, err := db.GetProofsByPubkeyVersion(l.pubkeyVersion)
-//     if err != nil {
-//         return fmt.Errorf("db.GetProofsByPubkeyVersion(l.pubkeyVersion) %w", err)
-//     }
-//
-//     trustedMints, err := db.GetTrustedMints()
-//     if err != nil {
-//         return fmt.Errorf("db.GetTrustedMints() %w", err)
-//     }
-//
-//
-// 	return nil
-//
-// }
-
 func checkMapOfPubkeys(keys nut01.KeysMap, amount uint64) (*secp256k1.PublicKey, error) {
 	key, ok := keys[amount]
 
@@ -409,6 +393,7 @@ func (l *DBNativeWallet) MakeBlindMessages(amount uint64, mint string, counter *
 			return blindMessages, secrets, blindingFactors, fmt.Errorf("crypto.BlindMessage(secret, blindingFactor ) %w", err)
 		}
 
+		// before check of activeKeyset
 		value, ok := l.activeKeys[mint]
 
 		if !ok {
@@ -428,8 +413,25 @@ func (l *DBNativeWallet) MakeBlindMessages(amount uint64, mint string, counter *
 	return blindMessages, secrets, blindingFactors, nil
 }
 func (l *DBNativeWallet) SwapProofs(blindMessages cashu.BlindedMessages, proofs cashu.Proofs, mint string) (cashu.BlindedSignatures, error) {
+	log.Printf("\n proofs: %+v \n", proofs)
+	log.Printf("\n blindMessages: %+v \n", blindMessages)
+
+	// signproofs
+	var sigs cashu.BlindedSignatures
+
+	privKey, err := l.derivePrivateKey(l.PubkeyVersion.VersionNum)
+	if err != nil {
+		return sigs, fmt.Errorf("l.derivePrivateKey(l.PubkeyVersion.VersionNum) %w", err)
+	}
+
+	// l.PubkeyVersion.VersionNum
+	signedProofs, err := nut11.AddSignatureToInputs(proofs, privKey)
+	if err != nil {
+		return sigs, fmt.Errorf("nut11.AddSignatureToInputs(proofs, privKey) %w", err)
+	}
+
 	request := nut03.PostSwapRequest{
-		Inputs:  proofs,
+		Inputs:  signedProofs,
 		Outputs: blindMessages,
 	}
 
@@ -437,26 +439,25 @@ func (l *DBNativeWallet) SwapProofs(blindMessages cashu.BlindedMessages, proofs 
 	if err != nil {
 		return response.Signatures, fmt.Errorf("wallet.PostSwap(mint, request) %w", err)
 	}
-	// nut12.VerifyBlindSignatureDLEQ()
 
 	return response.Signatures, nil
 }
 
 func (l *DBNativeWallet) GetActiveKeyset(mint_url string) (nut01.Keyset, error) {
-	var keyset nut01.Keyset
+	var endKeyset nut01.Keyset
 	keys, err := wallet.GetActiveKeysets(mint_url)
 	if err != nil {
-		return keyset, fmt.Errorf("wallet.GetAllKeysets(mintUrl) %w", err)
+		return endKeyset, fmt.Errorf("wallet.GetAllKeysets(mintUrl) %w", err)
 	}
 
 	for _, keyset := range keys.Keysets {
 		if keyset.Unit == "sat" {
 			l.activeKeys[mint_url] = keyset
+			endKeyset = keyset
 		} else {
 			return keyset, ErrKeysetUnitNotSat
-
 		}
 	}
 
-	return keyset, nil
+	return endKeyset, nil
 }

@@ -140,7 +140,7 @@ func (sq SqliteDB) GetLockedProofsByPubkeyVersion(tx *sql.Tx, pubkey uint) (cash
 func (sq SqliteDB) GetLockedProofsByRedeemed(tx *sql.Tx, redeemed bool) (map[string]cashu.Proofs, error) {
 	proofs := make(map[string]cashu.Proofs)
 
-	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness FROM locked_proofs WHERE redeemed = ?")
+	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness, mint FROM locked_proofs WHERE redeemed = ?")
 	if err != nil {
 		return proofs, fmt.Errorf(`tx.Prepare("SELECT amount, id, secret, C. %w`, err)
 	}
@@ -210,45 +210,19 @@ func (sq SqliteDB) GetLockedProofsByC(tx *sql.Tx, Cs []string) (cashu.Proofs, er
 }
 
 func (sq SqliteDB) ChangeLockedProofsRedeem(tx *sql.Tx, Cs []string, redeem bool) error {
-	var proofs cashu.Proofs
+	// var proofs cashu.Proofs
 
-	// Create the placeholders for the IN clause
-	placeholders := make([]string, len(Cs))
-	for i := range placeholders {
-		placeholders[i] = "?"
-	}
+	for i := 0; i < len(Cs); i++ {
+		query := fmt.Sprintf(
+			"UPDATE locked_proofs SET redeemed = %v WHERE C = ?",
+			true,
+		)
 
-	query := fmt.Sprintf(
-		"UPDATE stored_proofs SET redeem = ? WHERE C IN (%s)",
-		strings.Join(placeholders, ","),
-	)
-
-	stmt, err := tx.Prepare(query)
-	if err != nil {
-		return fmt.Errorf(`tx.Exec("INSERT INTO blobs (sha256, ). %w`, err)
-	}
-	defer stmt.Close()
-
-	args := make([]interface{}, len(Cs))
-	args[0] = redeem
-	for i, v := range Cs {
-		args[i+1] = v
-	}
-
-	rows, err := stmt.Query(args...)
-	if err != nil {
-		return fmt.Errorf(`stmt.Query(args...). %w`, err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var p cashu.Proof
-		err = rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness)
+		_, err := tx.Exec(query, Cs[i])
 		if err != nil {
-			return fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness) %w`, err)
+			return fmt.Errorf(`tx.Exec(query). %w`, err)
 		}
 
-		proofs = append(proofs, p)
 	}
 
 	return nil
@@ -337,10 +311,11 @@ func (sq SqliteDB) AddTrustedMint(tx *sql.Tx, url string) error {
 	}
 	return nil
 }
+
 func (sq SqliteDB) SetKeysetCounter(tx *sql.Tx, counter KeysetCounter) error {
-	stmt, err := tx.Prepare("INSERT INTO trusted_mints (keyset_id, counter) values (?,?)")
+	stmt, err := tx.Prepare("INSERT INTO counter_table (keyset_id, counter) values (?,?)")
 	if err != nil {
-		return fmt.Errorf("sq.Db.Prepare(). %w", err)
+		return fmt.Errorf(`tx.Prepare("INSERT INTO counter_table (. %w`, err)
 	}
 	defer stmt.Close()
 
@@ -355,23 +330,20 @@ func (sq SqliteDB) SetKeysetCounter(tx *sql.Tx, counter KeysetCounter) error {
 func (sq SqliteDB) GetKeysetCounter(tx *sql.Tx, id string) (KeysetCounter, error) {
 	var counter KeysetCounter
 
-	stmt, err := tx.Prepare("SELECT keyset_id, counter WHERE keyset_id = ?")
+	stmt, err := tx.Prepare("SELECT keyset_id, counter FROM counter_table WHERE keyset_id = ?")
 	if err != nil {
 		return counter, fmt.Errorf(`SELECT keyset_id, counter WHERE keyset_id = ?. %w`, err)
 	}
 	defer stmt.Close()
 
-	rows, err := stmt.Query(id)
+	rows := stmt.QueryRow(id)
 	if err != nil {
 		return counter, fmt.Errorf(`stmt.Query(pubkey). %w`, err)
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		err = rows.Scan(&counter.KeysetId, &counter.Counter)
-		if err != nil {
-			return counter, fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness, &mint) %w`, err)
-		}
+	err = rows.Scan(&counter.KeysetId, &counter.Counter)
+	if err != nil {
+		return counter, fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness, &mint) %w`, err)
 	}
 
 	return counter, nil
