@@ -19,6 +19,7 @@ import (
 )
 
 const discoveryRelay = "wss://purplepag.es"
+
 func StringToPubkey(pubkey string) (*secp256k1.PublicKey, error) {
 	var pubkeyFromMint *secp256k1.PublicKey
 	pubkeyFromMintByte, err := hex.DecodeString(pubkey)
@@ -34,15 +35,15 @@ func StringToPubkey(pubkey string) (*secp256k1.PublicKey, error) {
 
 }
 
-func GetRelaysFromNIP65Pubkey(pubkey string, relayUrl string,  pool *nostr.SimplePool ) error {
+func GetRelaysFromNIP65Pubkey(pubkey string, relayUrl string, pool *nostr.SimplePool) error {
 
-    relay, err := nostr.RelayConnect(context.Background(), relayUrl )
+	relay, err := nostr.RelayConnect(context.Background(), relayUrl)
 	if err != nil {
 		return fmt.Errorf("nostr.RelayConnect(context.Background(),discoveryRelay ). %w", err)
 	}
-    log.Printf("relay: %+v", relay)
+	log.Printf("relay: %+v", relay)
 
-    return nil
+	return nil
 
 }
 
@@ -58,16 +59,16 @@ func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.T
 
 	privKey := nostr.GeneratePrivateKey()
 	pool := nostr.NewSimplePool(ctx)
-    err = GetRelaysFromNIP65Pubkey(pubkey, discoveryRelay, pool)
+	err = GetRelaysFromNIP65Pubkey(pubkey, discoveryRelay, pool)
 	if err != nil {
 		return fmt.Errorf("GetRelaysFromNIP65Pubkey(pubkey, pool). %w", err)
 	}
-    // pool.Relays.Store()
-    // nostr.NewRelay
+	// pool.Relays.Store()
+	// nostr.NewRelay
 
-    // nostr.
+	// nostr.
 
-    // get relays of the nostr user
+	// get relays of the nostr user
 
 	conversationKey, err := nip44.GenerateConversationKey(pubkey, privKey)
 	if err != nil {
@@ -83,14 +84,14 @@ func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.T
 		if err != nil {
 			return fmt.Errorf("token.Serialize(). %w", err)
 		}
-		log.Println("token to redeem: %+v", tokenString)
+		log.Printf("\n token to redeem: %+v \n", tokenString)
 
 		// TODO send to nostr user
 
-        _, err = nip44.Encrypt(tokenString, conversationKey)
-	    if err != nil {
-	    	return fmt.Errorf("nip44.Encrypt(tokenString, conversationKey). %w", err)
-	    }
+		_, err = nip44.Encrypt(tokenString, conversationKey)
+		if err != nil {
+			return fmt.Errorf("nip44.Encrypt(tokenString, conversationKey). %w", err)
+		}
 
 		err = db.ChangeSwappedProofsSpent(tx, val, true)
 		if err != nil {

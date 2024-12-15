@@ -72,14 +72,14 @@ func TestKeyRotation(t *testing.T) {
 		t.Fatalf(" \n nativeWallet.StoreEcash(tokenForProofs, tx, sqlite) %+v", err)
 	}
 
+	err = core.RotateLockedProofs(&nativeWallet, sqlite, tx)
+	if err != nil {
+		t.Fatalf(" \n core.RotateLockedProofs(&nativeWallet, sqlite) %+v", err)
+	}
+
 	err = tx.Commit()
 	if err != nil {
 		t.Fatalf(" \n tx.Commit() %+v", err)
-	}
-
-	err = core.RotateLockedProofs(&nativeWallet, sqlite)
-	if err != nil {
-		t.Fatalf(" \n core.RotateLockedProofs(&nativeWallet, sqlite) %+v", err)
 	}
 
 	// check if I don't have any proofs unredeemed and check if the other proofs are stored
