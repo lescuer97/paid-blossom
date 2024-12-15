@@ -9,6 +9,7 @@ type Blob struct {
 	Data []byte
 	Size uint64
 	Name string
+	Type string
 }
 
 type DBBlobData struct {
