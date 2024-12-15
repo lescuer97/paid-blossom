@@ -26,6 +26,7 @@ var (
 	ErrNotEnoughtSats = errors.New("Not enough sats")
 )
 
+// charges per
 func QuoteAmountToPay(Blength uint64, satPerMB uint64) uint64 {
 	if Blength < 1024 {
 		return 1

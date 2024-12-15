@@ -17,9 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const SatPerMegaByteDownload = 1
-
-func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO) {
+func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO, cost uint64) {
 	r.GET("/", func(c *gin.Context) {
 
 		c.JSON(200, nil)
@@ -74,7 +72,7 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 			return
 		}
 
-		amountToPay := xcashu.QuoteAmountToPay(uint64(blob.Data.Size), SatPerMegaByteDownload)
+		amountToPay := xcashu.QuoteAmountToPay(uint64(blob.Data.Size), cost)
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amountToPay,
 			Unit:   xcashu.Sat,
@@ -190,7 +188,7 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 			return
 		}
 
-		amount := xcashu.QuoteAmountToPay(length, SatPerMegaByteDownload)
+		amount := xcashu.QuoteAmountToPay(length, cost)
 		fmt.Println("amount: ", amount)
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amount,

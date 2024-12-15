@@ -21,9 +21,12 @@ import (
 	"time"
 )
 
-const SatPerMegaByteUpload = 1
+const (
+	DOWNLOAD_COST_2MB = "DOWNLOAD_COST_2MB"
+	UPLOAD_COST_2MB   = "UPLOAD_COST_2MB"
+)
 
-func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO) error {
+func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO, cost uint64) error {
 	quoteReq := c.GetHeader("content-length")
 	buf := new(bytes.Buffer)
 
@@ -84,7 +87,7 @@ func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Da
 		return err
 	}
 
-	amountToPay := xcashu.QuoteAmountToPay(uint64(contentLenght), SatPerMegaByteUpload)
+	amountToPay := xcashu.QuoteAmountToPay(uint64(contentLenght), cost)
 	paymentResponse := xcashu.PaymentQuoteResponse{
 		Amount: amountToPay,
 		Unit:   xcashu.Sat,

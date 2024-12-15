@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -13,8 +14,11 @@ import (
 	c "github.com/elnosh/gonuts/cashu"
 	"github.com/elnosh/gonuts/cashu/nuts/nut12"
 	"github.com/elnosh/gonuts/crypto"
+	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip44"
 )
 
+const discoveryRelay = "wss://purplepag.es"
 func StringToPubkey(pubkey string) (*secp256k1.PublicKey, error) {
 	var pubkeyFromMint *secp256k1.PublicKey
 	pubkeyFromMintByte, err := hex.DecodeString(pubkey)
@@ -30,30 +34,74 @@ func StringToPubkey(pubkey string) (*secp256k1.PublicKey, error) {
 
 }
 
-func WatchForPubkeyRotation(wallet cashu.CashuWallet, db database.Database) {
+func GetRelaysFromNIP65Pubkey(pubkey string, relayUrl string,  pool *nostr.SimplePool ) error {
+
+    relay, err := nostr.RelayConnect(context.Background(), relayUrl )
+	if err != nil {
+		return fmt.Errorf("nostr.RelayConnect(context.Background(),discoveryRelay ). %w", err)
+	}
+    log.Printf("relay: %+v", relay)
+
+    return nil
 
 }
 
-func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database) error {
+// take the redeem proofs and send them to a nostr user
+func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.Tx, pubkey string) error {
 
-	tx, err := db.BeginTransaction()
+	mintsProofs, err := db.GetBySpentProofs(tx, false)
 	if err != nil {
-		return fmt.Errorf("db.BeginTransaction(). %w", err)
+		return fmt.Errorf("db.GetBySpentProofs(tx, false ). %w", err)
 	}
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-			log.Fatalf("Panic occurred: %v\n", p)
-		} else if err != nil {
-			log.Println("Rolling back transaction due to error.")
-			tx.Rollback()
-		} else {
-			err = tx.Commit()
-			if err != nil {
-				log.Fatalf("Failed to commit transaction: %v\n", err)
-			}
+
+	ctx := context.Background()
+
+	privKey := nostr.GeneratePrivateKey()
+	pool := nostr.NewSimplePool(ctx)
+    err = GetRelaysFromNIP65Pubkey(pubkey, discoveryRelay, pool)
+	if err != nil {
+		return fmt.Errorf("GetRelaysFromNIP65Pubkey(pubkey, pool). %w", err)
+	}
+    // pool.Relays.Store()
+    // nostr.NewRelay
+
+    // nostr.
+
+    // get relays of the nostr user
+
+	conversationKey, err := nip44.GenerateConversationKey(pubkey, privKey)
+	if err != nil {
+		return fmt.Errorf("nip44.GenerateConversationKey(pubkey, privKey). %w", err)
+	}
+
+	for key, val := range mintsProofs {
+		token, err := c.NewTokenV4(val, key, c.Sat, false)
+		if err != nil {
+			return fmt.Errorf("c.NewTokenV4(val, key, c.Sat, true). %w", err)
 		}
-	}()
+		tokenString, err := token.Serialize()
+		if err != nil {
+			return fmt.Errorf("token.Serialize(). %w", err)
+		}
+		log.Println("token to redeem: %+v", tokenString)
+
+		// TODO send to nostr user
+
+        _, err = nip44.Encrypt(tokenString, conversationKey)
+	    if err != nil {
+	    	return fmt.Errorf("nip44.Encrypt(tokenString, conversationKey). %w", err)
+	    }
+
+		err = db.ChangeSwappedProofsSpent(tx, val, true)
+		if err != nil {
+			return fmt.Errorf("db.ChangeSwappedProofsSpent(tx, val, true). %w", err)
+		}
+	}
+
+	return nil
+}
+
+func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database, tx *sql.Tx) error {
 
 	proofsPerMint, err := db.GetLockedProofsByRedeemed(tx, false)
 	if err != nil {

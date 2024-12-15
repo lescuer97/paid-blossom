@@ -215,7 +215,7 @@ func (sq SqliteDB) ChangeLockedProofsRedeem(tx *sql.Tx, Cs []string, redeem bool
 	for i := 0; i < len(Cs); i++ {
 		query := fmt.Sprintf(
 			"UPDATE locked_proofs SET redeemed = %v WHERE C = ?",
-			true,
+			redeem,
 		)
 
 		_, err := tx.Exec(query, Cs[i])
@@ -367,10 +367,56 @@ func (sq SqliteDB) AddProofs(tx *sql.Tx, proofs cashu.Proofs, mint string) error
 	return nil
 }
 
+func (sq SqliteDB) GetBySpentProofs(tx *sql.Tx, spent bool) (map[string]cashu.Proofs, error) {
+	proofs := make(map[string]cashu.Proofs)
+
+	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness, mint FROM swapped_proofs WHERE spent = ?")
+	if err != nil {
+		return proofs, fmt.Errorf(`tx.Prepare("SELECT amount, id, secret, C. %w`, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(spent)
+	if err != nil {
+		return proofs, fmt.Errorf(`stmt.Query(pubkey). %w`, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p cashu.Proof
+		var mint string
+		err = rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness, &mint)
+		if err != nil {
+			return proofs, fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness, &mint) %w`, err)
+		}
+
+		proofs[mint] = append(proofs[mint], p)
+	}
+
+	return proofs, nil
+}
+
+func (sq SqliteDB) ChangeSwappedProofsSpent(tx *sql.Tx, proofs cashu.Proofs, spent bool) error {
+	for i := 0; i < len(proofs); i++ {
+		query := fmt.Sprintf(
+			"UPDATE swapped_proofs SET spent = %v WHERE C = ?",
+			spent,
+		)
+
+		_, err := tx.Exec(query, proofs[i].C)
+		if err != nil {
+			return fmt.Errorf(`tx.Exec(query). %w`, err)
+		}
+
+	}
+
+	return nil
+}
+
 func DatabaseSetup(ctx context.Context, databaseDir string, migrationDir string) (SqliteDB, error) {
 	var sqlitedb SqliteDB
 
-	db, err := sql.Open("sqlite3", databaseDir+"/"+"app.db"+"?cache=shared&mode=rwc&_journal_mode=WAL")
+	db, err := sql.Open("sqlite3", databaseDir+"/"+"app.db"+"?cache=shared&_journal_mode=WAL")
 	if err != nil {
 		return sqlitedb, fmt.Errorf(`sql.Open("sqlite3", string + "app.db" ). %w`, err)
 

@@ -19,11 +19,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const SatPerMegaByteUpload = 1
-
-func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO) {
+func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO, cost uint64) {
 	r.HEAD("/upload", func(c *gin.Context) {
 		sha256Header := c.GetHeader(blossom.XSHA256)
+		log.Println("sha256Header: ", sha256Header)
 		hash, err := hex.DecodeString(sha256Header)
 		if err != nil {
 			c.JSON(400, "No X-SHA-256 Header available")
@@ -73,7 +72,7 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 			return
 		}
 
-		amount := xcashu.QuoteAmountToPay(uint64(contentLenght), SatPerMegaByteUpload)
+		amount := xcashu.QuoteAmountToPay(uint64(contentLenght), cost)
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amount,
 			Unit:   xcashu.Sat,
@@ -92,7 +91,7 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 	})
 
 	r.PUT("/upload", func(c *gin.Context) {
-		err := core.WriteBlobAndCharge(c, wallet, db, fileHandler)
+		err := core.WriteBlobAndCharge(c, wallet, db, fileHandler, cost)
 
 		if err != nil {
 			log.Printf("core.WriteBlobAndCharge(). %+v", err)

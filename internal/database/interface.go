@@ -35,6 +35,8 @@ type Database interface {
 
 	//For proofs that have already been swapped
 	AddProofs(tx *sql.Tx, proofs cashu.Proofs, mint string) error
+	GetBySpentProofs(tx *sql.Tx, spent bool) (map[string]cashu.Proofs, error)
+	ChangeSwappedProofsSpent(tx *sql.Tx, proofs cashu.Proofs, spent bool) error
 
 	AddTrustedMint(tx *sql.Tx, url string) error
 	GetTrustedMints(tx *sql.Tx) ([]string, error)

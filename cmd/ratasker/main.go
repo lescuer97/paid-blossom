@@ -7,10 +7,12 @@ import (
 	"os"
 	"ratasker/external/nostr"
 	"ratasker/internal/cashu"
+	"ratasker/internal/core"
 	"ratasker/internal/database"
 	"ratasker/internal/io"
 	"ratasker/internal/routes"
 	"ratasker/internal/utils"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,43 +84,69 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	routes.RootRoutes(r, &wallet, sqlite, fileHandler)
-	routes.UploadRoutes(r, &wallet, sqlite, fileHandler)
+	// get cost env variables
+	uploadCostStr := os.Getenv(core.UPLOAD_COST_2MB)
+	if uploadCostStr == "" {
+		uploadCostStr = "0"
+	}
+	downloadCostStr := os.Getenv(core.DOWNLOAD_COST_2MB)
+	if downloadCostStr == "" {
+		downloadCostStr = "0"
+	}
+
+	uploadCost, err := strconv.ParseUint(uploadCostStr, 10, 32)
+	if err != nil {
+		log.Panicf(`Could not convert upload cost %+v`, err)
+	}
+	downloadCost, err := strconv.ParseUint(downloadCostStr, 10, 32)
+	if err != nil {
+		log.Panicf(`Could not convert upload cost %+v`, err)
+	}
+
+	routes.UploadRoutes(r, &wallet, sqlite, fileHandler, uploadCost)
+	routes.RootRoutes(r, &wallet, sqlite, fileHandler, downloadCost)
+	// rotate keys when expiration happens
 	go func() {
 		for {
-			log.Println("Before go channel")
 			// Check if expiration of pubkey already happened
-			now := time.Now().Add(-10 * time.Minute).Unix()
+			now := time.Now().Add(-1 * time.Minute).Unix()
 			if now > int64(wallet.PubkeyVersion.Expiration) {
-				// rotate keys up
-				log.Println("Begining key roration")
-				tx, err := sqlite.BeginTransaction()
-				if err != nil {
-					log.Panicf("Could not get a lock on the db. %+v", err)
-				}
-				// Ensure that the transaction is rolled back in case of a panic or error
-				defer func() {
-					if p := recover(); p != nil {
-						tx.Rollback()
-					} else if err != nil {
-						tx.Rollback()
-					} else {
-						err = tx.Commit()
-						if err != nil {
-							log.Printf("\n Failed to commit transaction: %v\n", err)
-						}
-						fmt.Println("Transaction committed successfully.")
+				func() {
+
+					log.Println("begining key rotation")
+					// rotate keys up
+					tx, err := sqlite.BeginTransaction()
+					if err != nil {
+						log.Panicf("Could not get a lock on the db. %+v", err)
 					}
+					// Ensure that the transaction is rolled back in case of a panic or error
+					defer func() {
+						log.Println("rotating")
+						if p := recover(); p != nil {
+							tx.Rollback()
+						} else if err != nil {
+							tx.Rollback()
+						} else {
+							err = tx.Commit()
+							if err != nil {
+								log.Printf("\n Failed to commit transaction: %v\n", err)
+							}
+							fmt.Println("Transaction committed successfully.")
+						}
+					}()
+
+					err = wallet.RotatePubkey(tx, sqlite)
+					if err != nil {
+						log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
+					}
+					// move locked proofs to valid swap
+					err = core.RotateLockedProofs(&wallet, sqlite, tx)
+					if err != nil {
+						log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
+					}
+
+					log.Println("Finished key rotation")
 				}()
-
-				err = wallet.RotatePubkey(tx, sqlite)
-				if err != nil {
-					log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
-				}
-
-				// Redeem all proofs that are not reddemed
-
-				// TODO
 
 			}
 

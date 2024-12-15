@@ -26,7 +26,7 @@ import (
 )
 
 const DerivationForP2PK = 129372
-const ExpirationOfPubkeyHours = 4
+const ExpirationOfPubkey = 5
 
 var (
 	ErrNotTrustedMint         = errors.New("Not from trusted Mint")
@@ -186,7 +186,7 @@ func (l *DBNativeWallet) derivePrivateKey(version uint) (*secp256k1.PrivateKey, 
 
 func (l *DBNativeWallet) RotatePubkey(tx *sql.Tx, db database.Database) error {
 
-	expiration := time.Now().Add(ExpirationOfPubkeyHours * time.Hour)
+	expiration := time.Now().Add(ExpirationOfPubkey * time.Minute)
 	version, err := db.RotateNewPubkey(tx, expiration.Unix())
 	if err != nil {
 		return fmt.Errorf("github.com/elnosh/gonuts.%w", err)
@@ -324,6 +324,9 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 		if !nut11.CanSign(spendCondition, lockedEcashPrivateKey) {
 			return token.Proofs(), fmt.Errorf("CanSign(spendCondition, lockedEcashPrivateKey) %w. %w. Proof: %+v ", err, ErrNotLockedToPubkey, p)
 		}
+
+		// TODO  unlock when cashu-ts has the ability to lock for timing and send dleq
+
 		// Verificar que tiene un bloqueo de al menos 4 horas
 		// p2pkTags, err := nut11.ParseP2PKTags(spendCondition.Data.Tags)
 		// if err != nil {
@@ -342,13 +345,13 @@ func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.
 		// 	return token.Proofs(), fmt.Errorf("nut12.VerifyProofDLEQ(p, mintPubkey). %w. %w", err, ErrCouldNotVerifyDLEQ)
 		// }
 		//
-		// TODO - LATER Check Bloom filter if there is a collision and if there is check if it's a secret
+
 		bytesC, err := hex.DecodeString(p.C)
 		if err != nil {
 			return token.Proofs(), fmt.Errorf("hex.DecodeString(p.C) %w.", err)
 		}
 
-		// if conflic check if C already Exists
+		// if conflict check if C already Exists
 		if l.filter.TestOrAdd(bytesC) {
 			proofs, err := db.GetLockedProofsByC(tx, []string{p.C})
 			if len(proofs) > 0 {
