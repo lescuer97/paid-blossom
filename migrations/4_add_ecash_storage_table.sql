@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS trusted_mints(
 
 -- +goose Down
 DROP TABLE IF EXISTS locked_proofs;
-DROP TABLE IF EXISTS swaped_proofs;
+DROP TABLE IF EXISTS swapped_proofs;
 DROP TABLE IF EXISTS trusted_mints;
 DROP TABLE IF EXISTS cashu_pubkey;
 

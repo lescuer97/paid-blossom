@@ -20,6 +20,10 @@ import (
 
 const discoveryRelay = "wss://purplepag.es"
 
+var (
+	ErrNoRelayMetadataForMessaging = errors.New("No relay metadata for messaging")
+)
+
 func StringToPubkey(pubkey string) (*secp256k1.PublicKey, error) {
 	var pubkeyFromMint *secp256k1.PublicKey
 	pubkeyFromMintByte, err := hex.DecodeString(pubkey)
@@ -41,10 +45,59 @@ func GetRelaysFromNIP65Pubkey(pubkey string, relayUrl string, pool *nostr.Simple
 	if err != nil {
 		return fmt.Errorf("nostr.RelayConnect(context.Background(),discoveryRelay ). %w", err)
 	}
-	log.Printf("relay: %+v", relay)
+	filter := nostr.Filter{
+		Authors: []string{pubkey},
+		Kinds:   []int{10002},
+	}
+	events, err := relay.QuerySync(context.Background(), filter)
+	if err != nil {
+		return fmt.Errorf("relay.QuerySync(context.Background(), filter). %w", err)
+	}
+
+	if len(events) == 0 {
+		return ErrNoRelayMetadataForMessaging
+	}
+
+	for _, v := range events {
+		for _, tag := range v.Tags {
+
+			relay, err := nostr.RelayConnect(context.Background(), tag.Value())
+			if err != nil {
+				continue
+			}
+			pool.Relays.Store(tag.Value(), relay)
+		}
+
+	}
+	return nil
+}
+
+func SendEncryptedProofsToPubkey(privKey string, encryptedToken string, pubkey string, pool *nostr.SimplePool) error {
+	tag := nostr.Tag{"r", pubkey}
+	// make event
+	ev := nostr.Event{
+		CreatedAt: nostr.Now(),
+		Kind:      nostr.KindEncryptedDirectMessage,
+		Tags:      nostr.Tags{tag},
+		Content:   encryptedToken,
+	}
+
+	err := ev.Sign(privKey)
+	if err != nil {
+		return fmt.Errorf("ev.Sign(privKey). %w", err)
+	}
+	// send event to relays
+	pool.Relays.Range(func(key string, value *nostr.Relay) bool {
+		log.Println("\n trying to publish event to relay: ", key)
+		if err := value.Publish(context.Background(), ev); err != nil {
+			log.Printf("\ncould not publish event. relay: %+v. Err: %+v\n\n", key, err)
+			return true
+		}
+
+		return true
+	})
 
 	return nil
-
 }
 
 // take the redeem proofs and send them to a nostr user
@@ -59,16 +112,12 @@ func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.T
 
 	privKey := nostr.GeneratePrivateKey()
 	pool := nostr.NewSimplePool(ctx)
+
+	// get relays of the nostr user
 	err = GetRelaysFromNIP65Pubkey(pubkey, discoveryRelay, pool)
 	if err != nil {
 		return fmt.Errorf("GetRelaysFromNIP65Pubkey(pubkey, pool). %w", err)
 	}
-	// pool.Relays.Store()
-	// nostr.NewRelay
-
-	// nostr.
-
-	// get relays of the nostr user
 
 	conversationKey, err := nip44.GenerateConversationKey(pubkey, privKey)
 	if err != nil {
@@ -86,11 +135,13 @@ func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.T
 		}
 		log.Printf("\n token to redeem: %+v \n", tokenString)
 
-		// TODO send to nostr user
-
-		_, err = nip44.Encrypt(tokenString, conversationKey)
+		encryptedString, err := nip44.Encrypt(tokenString, conversationKey)
 		if err != nil {
 			return fmt.Errorf("nip44.Encrypt(tokenString, conversationKey). %w", err)
+		}
+		err = SendEncryptedProofsToPubkey(privKey, encryptedString, pubkey, pool) // send to user
+		if err != nil {
+			return fmt.Errorf("SendEncryptedProofsToPubkey(privKey, encryptedString, pubkey,pool). %w", err)
 		}
 
 		err = db.ChangeSwappedProofsSpent(tx, val, true)

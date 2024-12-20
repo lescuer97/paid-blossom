@@ -19,6 +19,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/nbd-wtf/go-nostr/nip19"
 )
 
 var (
@@ -94,6 +95,18 @@ func main() {
 		downloadCostStr = "0"
 	}
 
+	owner_npub := os.Getenv(core.OWNER_NPUB)
+	if owner_npub == "" {
+		log.Panicf("no pubkey to send sats")
+	}
+	prefix, pubkey, err := nip19.Decode(owner_npub)
+	if err != nil {
+		log.Panicf("npub is incorrect. %+v", pubkey)
+	}
+	if prefix != "npub" {
+		log.Panicf("no npub in the OWNER_NPUB variable. %+v", owner_npub)
+	}
+
 	uploadCost, err := strconv.ParseUint(uploadCostStr, 10, 32)
 	if err != nil {
 		log.Panicf(`Could not convert upload cost %+v`, err)
@@ -141,6 +154,11 @@ func main() {
 					}
 					// move locked proofs to valid swap
 					err = core.RotateLockedProofs(&wallet, sqlite, tx)
+					if err != nil {
+						log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
+					}
+
+					err = core.SendProofsToOwner(&wallet, sqlite, tx, pubkey.(string))
 					if err != nil {
 						log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
 					}

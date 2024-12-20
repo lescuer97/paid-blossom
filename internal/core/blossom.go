@@ -24,6 +24,7 @@ import (
 const (
 	DOWNLOAD_COST_2MB = "DOWNLOAD_COST_2MB"
 	UPLOAD_COST_2MB   = "UPLOAD_COST_2MB"
+	OWNER_NPUB        = "OWNER_NPUB"
 )
 
 func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO, cost uint64) error {
