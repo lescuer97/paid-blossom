@@ -313,7 +313,8 @@ func (sq SqliteDB) AddTrustedMint(tx *sql.Tx, url string) error {
 }
 
 func (sq SqliteDB) SetKeysetCounter(tx *sql.Tx, counter KeysetCounter) error {
-	stmt, err := tx.Prepare("INSERT INTO counter_table (keyset_id, counter) values (?,?)")
+	log.Printf("\n counter inside db %+v \n", counter)
+	stmt, err := tx.Prepare("INSERT INTO counter_table (keyset_id, counter) values ($1,$2)")
 	if err != nil {
 		return fmt.Errorf(`tx.Prepare("INSERT INTO counter_table (. %w`, err)
 	}
@@ -330,7 +331,7 @@ func (sq SqliteDB) SetKeysetCounter(tx *sql.Tx, counter KeysetCounter) error {
 func (sq SqliteDB) GetKeysetCounter(tx *sql.Tx, id string) (KeysetCounter, error) {
 	var counter KeysetCounter
 
-	stmt, err := tx.Prepare("SELECT keyset_id, counter FROM counter_table WHERE keyset_id = ?")
+	stmt, err := tx.Prepare("SELECT keyset_id, counter FROM counter_table WHERE keyset_id = $1")
 	if err != nil {
 		return counter, fmt.Errorf(`SELECT keyset_id, counter WHERE keyset_id = ?. %w`, err)
 	}
@@ -347,6 +348,20 @@ func (sq SqliteDB) GetKeysetCounter(tx *sql.Tx, id string) (KeysetCounter, error
 	}
 
 	return counter, nil
+}
+func (sq SqliteDB) ModifyKeysetCounter(tx *sql.Tx, counter KeysetCounter) error {
+	stmt, err := tx.Prepare(" UPDATE counter_table SET counter = $1 WHERE keyset_id = $2")
+	if err != nil {
+		return fmt.Errorf(`tx.Prepare(" UPDATE counter_table SET counter (. %w`, err)
+	}
+	defer stmt.Close()
+
+	// Create a record to hold the result
+	_, err = stmt.Exec(counter.Counter, counter.KeysetId)
+	if err != nil {
+		return fmt.Errorf("stmt.Query() %w", err)
+	}
+	return nil
 }
 
 func (sq SqliteDB) AddProofs(tx *sql.Tx, proofs cashu.Proofs, mint string) error {
@@ -416,7 +431,7 @@ func (sq SqliteDB) ChangeSwappedProofsSpent(tx *sql.Tx, proofs cashu.Proofs, spe
 func DatabaseSetup(ctx context.Context, databaseDir string, migrationDir string) (SqliteDB, error) {
 	var sqlitedb SqliteDB
 
-	db, err := sql.Open("sqlite3", databaseDir+"/"+"app.db"+"?cache=shared&_journal_mode=WAL")
+	db, err := sql.Open("sqlite3", databaseDir+"/"+"app.db")
 	if err != nil {
 		return sqlitedb, fmt.Errorf(`sql.Open("sqlite3", string + "app.db" ). %w`, err)
 

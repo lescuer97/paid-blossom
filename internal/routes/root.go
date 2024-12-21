@@ -66,7 +66,8 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 				log.Println("Transaction committed successfully.")
 			}
 		}()
-		mints, err := db.GetTrustedMints(tx)
+
+		mints, err := cashu.GetTrustedMintFromOsEnv()
 		if err != nil {
 			c.JSON(400, "Malformed request")
 			return
@@ -76,7 +77,7 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amountToPay,
 			Unit:   xcashu.Sat,
-			Mints:  mints,
+			Mints:  []string{mints},
 			Pubkey: wallet.GetActivePubkey(),
 		}
 
@@ -100,7 +101,7 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 
 		token, err := xcashu.ParseTokenHeader(cashu_header, amountToPay)
 		if err != nil {
-			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %+v`, err)
+			log.Printf(`xcashu.ParseTokenHeader(cashu_header, amountToPay) %+v`, err)
 			c.Header(xcashu.Xcashu, encodedPayReq)
 			c.JSON(402, "payment required")
 			return
@@ -182,7 +183,7 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 				log.Println("Transaction committed successfully.")
 			}
 		}()
-		mints, err := db.GetTrustedMints(tx)
+		mints, err := cashu.GetTrustedMintFromOsEnv()
 		if err != nil {
 			c.JSON(400, "Malformed request")
 			return
@@ -193,7 +194,7 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amount,
 			Unit:   xcashu.Sat,
-			Mints:  mints,
+			Mints:  []string{mints},
 			Pubkey: wallet.GetActivePubkey(),
 		}
 

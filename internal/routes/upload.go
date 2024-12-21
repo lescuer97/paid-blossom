@@ -56,7 +56,7 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 				tx.Rollback()
 				log.Fatalf("Panic occurred: %v\n", p)
 			} else if err != nil {
-				log.Println("Rolling back transaction due to error.")
+				log.Println("Rolling back transaction due to error. err: ", err)
 				tx.Rollback()
 			} else {
 				err = tx.Commit()
@@ -66,7 +66,7 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 			}
 		}()
 
-		wallets, err := db.GetTrustedMints(tx)
+		mints, err := cashu.GetTrustedMintFromOsEnv()
 		if err != nil {
 			c.JSON(400, "Malformed request")
 			return
@@ -76,7 +76,7 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amount,
 			Unit:   xcashu.Sat,
-			Mints:  wallets,
+			Mints:  []string{mints},
 			Pubkey: wallet.GetActivePubkey(),
 		}
 		jsonBytes, err := json.Marshal(paymentResponse)

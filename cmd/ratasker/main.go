@@ -122,22 +122,27 @@ func main() {
 	go func() {
 		for {
 			// Check if expiration of pubkey already happened
-			now := time.Now().Add(-1 * time.Minute).Unix()
+			now := time.Now().Add(1 * time.Minute).Unix()
+			log.Println("now: ", now)
+			log.Println("wallet.PubkeyVersion.Expiration: ", wallet.PubkeyVersion.Expiration)
 			if now > int64(wallet.PubkeyVersion.Expiration) {
 				func() {
-
 					log.Println("begining key rotation")
 					// rotate keys up
 					tx, err := sqlite.BeginTransaction()
 					if err != nil {
 						log.Panicf("Could not get a lock on the db. %+v", err)
 					}
+                    beforeRotation := wallet.PubkeyVersion
 					// Ensure that the transaction is rolled back in case of a panic or error
 					defer func() {
-						log.Println("rotating")
 						if p := recover(); p != nil {
+							log.Printf("\n Rolling back  because of failure %+v\n", p)
+                            wallet.PubkeyVersion = beforeRotation
 							tx.Rollback()
 						} else if err != nil {
+							log.Println("Rolling back  because of error")
+                            wallet.PubkeyVersion = beforeRotation
 							tx.Rollback()
 						} else {
 							err = tx.Commit()
@@ -148,17 +153,13 @@ func main() {
 						}
 					}()
 
-					err = wallet.RotatePubkey(tx, sqlite)
-					if err != nil {
-						log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
-					}
 					// move locked proofs to valid swap
 					err = core.RotateLockedProofs(&wallet, sqlite, tx)
 					if err != nil {
-						log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
+						log.Panicf("core.RotateLockedProofs(&wallet, sqlite, tx). %+v", err)
 					}
 
-					err = core.SendProofsToOwner(&wallet, sqlite, tx, pubkey.(string))
+					err = wallet.RotatePubkey(tx, sqlite)
 					if err != nil {
 						log.Panicf("wallet.RotatePubkey(tx, sqlite). %+v", err)
 					}
@@ -168,7 +169,7 @@ func main() {
 
 			}
 
-			time.Sleep(20 * time.Second)
+			time.Sleep(10 * time.Second)
 		}
 
 	}()

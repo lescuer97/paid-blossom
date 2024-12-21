@@ -47,4 +47,5 @@ type Database interface {
 
 	GetKeysetCounter(tx *sql.Tx, id string) (KeysetCounter, error)
 	SetKeysetCounter(tx *sql.Tx, counter KeysetCounter) error
+	ModifyKeysetCounter(tx *sql.Tx, counter KeysetCounter) error
 }

@@ -88,9 +88,7 @@ func SendEncryptedProofsToPubkey(privKey string, encryptedToken string, pubkey s
 	}
 	// send event to relays
 	pool.Relays.Range(func(key string, value *nostr.Relay) bool {
-		log.Println("\n trying to publish event to relay: ", key)
 		if err := value.Publish(context.Background(), ev); err != nil {
-			log.Printf("\ncould not publish event. relay: %+v. Err: %+v\n\n", key, err)
 			return true
 		}
 
@@ -110,6 +108,7 @@ func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.T
 
 	ctx := context.Background()
 
+	// generate key to send proofs
 	privKey := nostr.GeneratePrivateKey()
 	pool := nostr.NewSimplePool(ctx)
 
@@ -119,7 +118,7 @@ func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.T
 		return fmt.Errorf("GetRelaysFromNIP65Pubkey(pubkey, pool). %w", err)
 	}
 
-	conversationKey, err := nip44.GenerateConversationKey(pubkey, privKey)
+	_, err = nip44.GenerateConversationKey(pubkey, privKey)
 	if err != nil {
 		return fmt.Errorf("nip44.GenerateConversationKey(pubkey, privKey). %w", err)
 	}
@@ -133,17 +132,17 @@ func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.T
 		if err != nil {
 			return fmt.Errorf("token.Serialize(). %w", err)
 		}
-		log.Printf("\n token to redeem: %+v \n", tokenString)
 
-		encryptedString, err := nip44.Encrypt(tokenString, conversationKey)
-		if err != nil {
-			return fmt.Errorf("nip44.Encrypt(tokenString, conversationKey). %w", err)
-		}
-		err = SendEncryptedProofsToPubkey(privKey, encryptedString, pubkey, pool) // send to user
-		if err != nil {
-			return fmt.Errorf("SendEncryptedProofsToPubkey(privKey, encryptedString, pubkey,pool). %w", err)
-		}
-
+        log.Printf("tokenString: ", tokenString)
+		// encryptedString, err := nip44.Encrypt(tokenString, conversationKey, nil)
+		// if err != nil {
+		// 	return fmt.Errorf("nip44.Encrypt(tokenString, conversationKey). %w", err)
+		// }
+		// err = SendEncryptedProofsToPubkey(privKey, encryptedString, pubkey, pool) // send to user
+		// if err != nil {
+		// 	return fmt.Errorf("SendEncryptedProofsToPubkey(privKey, encryptedString, pubkey,pool). %w", err)
+		// }
+		//
 		err = db.ChangeSwappedProofsSpent(tx, val, true)
 		if err != nil {
 			return fmt.Errorf("db.ChangeSwappedProofsSpent(tx, val, true). %w", err)
@@ -170,11 +169,18 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database, tx *sql.
 
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				log.Println("Setting counter to 0 for keysetid: ", keyset.Id)
 				counter.Counter = 0
 				counter.KeysetId = keyset.Id
 			} else {
 				return fmt.Errorf("db.GetKeysetCounter(tx,keyset.Id ). %w", err)
+			}
+		}
+
+		if counter.Counter == 0 {
+			err = db.SetKeysetCounter(tx, counter)
+			if err != nil {
+				return fmt.Errorf("db.SetKeysetCounter(tx, counter). %w", err)
+
 			}
 		}
 
@@ -188,9 +194,9 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database, tx *sql.
 			return fmt.Errorf("wallet.SwapProofs(blindMessages, proofs, mint_url). %w", err)
 		}
 
-		err = db.SetKeysetCounter(tx, counter)
+		err = db.ModifyKeysetCounter(tx, counter)
 		if err != nil {
-			return fmt.Errorf("db.SetKeysetCounter(tx, counter). %w", err)
+			return fmt.Errorf("db.ModifyKeysetCounter(tx, counter). %w", err)
 		}
 
 		var NewProofs c.Proofs

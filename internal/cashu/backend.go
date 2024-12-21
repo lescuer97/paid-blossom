@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"log"
 	"ratasker/internal/database"
-	"slices"
+
+	// "slices"
 	"time"
 
 	"github.com/bits-and-blooms/bloom/v3"
@@ -26,7 +27,7 @@ import (
 )
 
 const DerivationForP2PK = 129372
-const ExpirationOfPubkey = 5
+const ExpirationOfPubkey = 2
 
 var (
 	ErrNotTrustedMint         = errors.New("Not from trusted Mint")
@@ -94,13 +95,13 @@ func NewDBLocalWallet(seedWords string, db database.Database) (DBNativeWallet, e
 		}
 	}()
 
-	mints, err := db.GetTrustedMints(tx)
+	mints, err := GetTrustedMintFromOsEnv()
 	if err != nil {
-		return wallet, fmt.Errorf("db.GetTrustedMints() %w", err)
+		return wallet, fmt.Errorf("cashu.GetTrustedMintFromOsEnv() %w", err)
 	}
 
 	// Get all active keys form mints
-	err = wallet.getActiveKeysFromTrustedMints(mints)
+	err = wallet.getActiveKeysFromTrustedMints([]string{mints})
 	if err != nil {
 		return wallet, fmt.Errorf("wallet.getActiveKeysFromTrustedMints() %w", err)
 	}
@@ -135,9 +136,7 @@ func NewDBLocalWallet(seedWords string, db database.Database) (DBNativeWallet, e
 			if err != nil {
 				return wallet, fmt.Errorf("wallet.RotatePubkey(tx, db) %w", err)
 			}
-
 		} else {
-
 			return wallet, fmt.Errorf("db.GetActivePubkey(tx) %w", err)
 		}
 
@@ -185,14 +184,12 @@ func (l *DBNativeWallet) derivePrivateKey(version uint) (*secp256k1.PrivateKey, 
 }
 
 func (l *DBNativeWallet) RotatePubkey(tx *sql.Tx, db database.Database) error {
-
 	expiration := time.Now().Add(ExpirationOfPubkey * time.Minute)
 	version, err := db.RotateNewPubkey(tx, expiration.Unix())
 	if err != nil {
-		return fmt.Errorf("github.com/elnosh/gonuts.%w", err)
+		return fmt.Errorf("db.RotateNewPubkey(tx, expiration.Unix()). %w", err)
 	}
-
-	privKey, err := l.derivePrivateKey(l.PubkeyVersion.VersionNum)
+	privKey, err := l.derivePrivateKey(version.VersionNum)
 
 	if err != nil {
 		return fmt.Errorf("l.derivePrivateKey(version) %w", err)
@@ -278,11 +275,15 @@ func FindKeysetPubkey(tx *sql.Tx, proof cashu.Proof, mintUrl string, activeKeyse
 
 func (l *DBNativeWallet) VerifyToken(token cashu.Token, tx *sql.Tx, db database.Database) (cashu.Proofs, error) {
 
-	trustedMints, err := db.GetTrustedMints(tx)
+	mint, err := GetTrustedMintFromOsEnv()
 	if err != nil {
-		return token.Proofs(), fmt.Errorf("db.GetTrustedMints() %w", err)
+		return token.Proofs(), fmt.Errorf("cashu.GetTrustedMintFromOsEnv() %w", err)
 	}
-	if !slices.Contains(trustedMints, token.Mint()) {
+
+	// if !slices.Contains(trustedMints, token.Mint()) {
+	// 	return token.Proofs(), fmt.Errorf("MintTried: %+v, %w, %w", token.Mint(), ErrNotTrustedMint, err)
+	// }
+	if mint != token.Mint() {
 		return token.Proofs(), fmt.Errorf("MintTried: %+v, %w, %w", token.Mint(), ErrNotTrustedMint, err)
 	}
 
@@ -416,8 +417,6 @@ func (l *DBNativeWallet) MakeBlindMessages(amount uint64, mint string, counter *
 	return blindMessages, secrets, blindingFactors, nil
 }
 func (l *DBNativeWallet) SwapProofs(blindMessages cashu.BlindedMessages, proofs cashu.Proofs, mint string) (cashu.BlindedSignatures, error) {
-	log.Printf("\n proofs: %+v \n", proofs)
-	log.Printf("\n blindMessages: %+v \n", blindMessages)
 
 	// signproofs
 	var sigs cashu.BlindedSignatures
@@ -427,7 +426,6 @@ func (l *DBNativeWallet) SwapProofs(blindMessages cashu.BlindedMessages, proofs 
 		return sigs, fmt.Errorf("l.derivePrivateKey(l.PubkeyVersion.VersionNum) %w", err)
 	}
 
-	// l.PubkeyVersion.VersionNum
 	signedProofs, err := nut11.AddSignatureToInputs(proofs, privKey)
 	if err != nil {
 		return sigs, fmt.Errorf("nut11.AddSignatureToInputs(proofs, privKey) %w", err)

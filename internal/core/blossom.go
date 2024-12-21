@@ -82,7 +82,7 @@ func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Da
 		return err
 	}
 
-	wallets, err := db.GetTrustedMints(tx)
+	mints, err := cashu.GetTrustedMintFromOsEnv()
 	if err != nil {
 		c.JSON(400, "Malformed request")
 		return err
@@ -92,7 +92,7 @@ func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Da
 	paymentResponse := xcashu.PaymentQuoteResponse{
 		Amount: amountToPay,
 		Unit:   xcashu.Sat,
-		Mints:  wallets,
+		Mints:  []string{mints},
 		Pubkey: wallet.GetActivePubkey(),
 	}
 
@@ -109,7 +109,7 @@ func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Da
 
 	token, err := xcashu.ParseTokenHeader(cashu_header, amountToPay)
 	if err != nil {
-		log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %+v`, err)
+		log.Printf(`xcashu.ParseTokenHeader(cashu_header, amountToPay) %+v`, err)
 		c.JSON(402, encodedPayReq)
 		return err
 	}
