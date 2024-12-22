@@ -17,6 +17,7 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/elnosh/gonuts/cashu"
 	"github.com/elnosh/gonuts/cashu/nuts/nut01"
+	"github.com/elnosh/gonuts/cashu/nuts/nut02"
 	"github.com/elnosh/gonuts/cashu/nuts/nut03"
 	"github.com/elnosh/gonuts/cashu/nuts/nut10"
 	"github.com/elnosh/gonuts/cashu/nuts/nut11"
@@ -46,11 +47,12 @@ type CashuWallet interface {
 
 	StoreEcash(token cashu.Token, tx *sql.Tx, db database.Database) error
 	// This follows deterministic secrets for recovery purposes
-	SwapProofs(blindMessages cashu.BlindedMessages, proofs cashu.Proofs, mint string) (cashu.BlindedSignatures, error)
+	SwapProofs(blindMessages cashu.BlindedMessages, proofs []database.ProofToSwap, mint string) (cashu.BlindedSignatures, error)
 
 	VerifyToken(token cashu.Token, tx *sql.Tx, db database.Database) (cashu.Proofs, error)
 	MakeBlindMessages(amount uint64, mint string, counter *database.KeysetCounter) (cashu.BlindedMessages, []string, []*secp256k1.PrivateKey, error)
 	GetActiveKeyset(mint_url string) (nut01.Keyset, error)
+	CalculateFeesFromProofs(proofs []database.ProofToSwap, keysets *nut02.GetKeysetsResponse) (uint, error)
 }
 
 type DBNativeWallet struct {
@@ -117,7 +119,7 @@ func NewDBLocalWallet(seedWords string, db database.Database) (DBNativeWallet, e
 
 	for _, proofs := range proofsPerMint {
 		for i := 0; i < len(proofs); i++ {
-			bytes, err := hex.DecodeString(proofs[i].C)
+			bytes, err := hex.DecodeString(proofs[i].Proof.C)
 			if err != nil {
 				return wallet, fmt.Errorf("db.GetProofsByRedeemed(tx, false) %w", err)
 			}
@@ -416,19 +418,38 @@ func (l *DBNativeWallet) MakeBlindMessages(amount uint64, mint string, counter *
 
 	return blindMessages, secrets, blindingFactors, nil
 }
-func (l *DBNativeWallet) SwapProofs(blindMessages cashu.BlindedMessages, proofs cashu.Proofs, mint string) (cashu.BlindedSignatures, error) {
+func (l *DBNativeWallet) SwapProofs(blindMessages cashu.BlindedMessages, proofs []database.ProofToSwap, mint string) (cashu.BlindedSignatures, error) {
 
 	// signproofs
 	var sigs cashu.BlindedSignatures
 
-	privKey, err := l.derivePrivateKey(l.PubkeyVersion.VersionNum)
-	if err != nil {
-		return sigs, fmt.Errorf("l.derivePrivateKey(l.PubkeyVersion.VersionNum) %w", err)
+	var signedProofs cashu.Proofs
+
+	swapsToSignByPubkey := make(map[uint64]cashu.Proofs)
+
+	// order swaps by pubkey so we can sign
+	for i := 0; i < len(proofs); i++ {
+		value, exists := swapsToSignByPubkey[proofs[i].PubkeyVersion]
+		if exists {
+			value = append(value, proofs[i].Proof)
+			swapsToSignByPubkey[proofs[i].PubkeyVersion] = value
+		} else {
+			swapsToSignByPubkey[proofs[i].PubkeyVersion] = cashu.Proofs{proofs[i].Proof}
+		}
 	}
 
-	signedProofs, err := nut11.AddSignatureToInputs(proofs, privKey)
-	if err != nil {
-		return sigs, fmt.Errorf("nut11.AddSignatureToInputs(proofs, privKey) %w", err)
+	// sign for ecash pubkey locked
+	for key, value := range swapsToSignByPubkey {
+		privKey, err := l.derivePrivateKey(uint(key))
+		if err != nil {
+			return sigs, fmt.Errorf("l.derivePrivateKey(l.PubkeyVersion.VersionNum) %w", err)
+		}
+
+		signedProofsWithPubkey, err := nut11.AddSignatureToInputs(value, privKey)
+		if err != nil {
+			return sigs, fmt.Errorf("nut11.AddSignatureToInputs(proofs, privKey) %w", err)
+		}
+		signedProofs = append(signedProofs, signedProofsWithPubkey...)
 	}
 
 	request := nut03.PostSwapRequest{
@@ -461,4 +482,31 @@ func (l *DBNativeWallet) GetActiveKeyset(mint_url string) (nut01.Keyset, error) 
 	}
 
 	return endKeyset, nil
+}
+
+func (l *DBNativeWallet) CalculateFeesFromProofs(proofs []database.ProofToSwap, keysets *nut02.GetKeysetsResponse) (uint, error) {
+	// proofs from each keyset
+	keysetFees := make(map[string]struct {
+		Cost     uint
+		Quantity uint
+	})
+
+	for _, v := range keysets.Keysets {
+		keysetFees[v.Id] =
+			struct {
+				Cost     uint
+				Quantity uint
+			}{
+				Cost:     v.InputFeePpk,
+				Quantity: 0,
+			}
+	}
+
+	var total uint = 0
+	for _, v := range proofs {
+		total += keysetFees[v.Proof.Id].Cost
+	}
+
+	return (total + 999) / 1000, nil
+
 }

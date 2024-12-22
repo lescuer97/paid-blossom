@@ -58,13 +58,6 @@ func main() {
 
 	r := gin.Default()
 
-	pathToCashu := homeDir + "/" + "cashu"
-
-	err = utils.MakeSureFilePathExists(pathToCashu, "")
-	if err != nil {
-		log.Panicf(`utils.MakeSureFilePathExists(pathToData, ""). %+v`, err)
-	}
-
 	fileHandler, err := io.MakeFileSystemHandler()
 	if err != nil {
 		log.Panicf(`io.MakeFileSystemHandler(). %+v`, err)
@@ -118,6 +111,7 @@ func main() {
 
 	routes.UploadRoutes(r, &wallet, sqlite, fileHandler, uploadCost)
 	routes.RootRoutes(r, &wallet, sqlite, fileHandler, downloadCost)
+
 	// rotate keys when expiration happens
 	go func() {
 		for {
@@ -133,16 +127,16 @@ func main() {
 					if err != nil {
 						log.Panicf("Could not get a lock on the db. %+v", err)
 					}
-                    beforeRotation := wallet.PubkeyVersion
+					beforeRotation := wallet.PubkeyVersion
 					// Ensure that the transaction is rolled back in case of a panic or error
 					defer func() {
 						if p := recover(); p != nil {
 							log.Printf("\n Rolling back  because of failure %+v\n", p)
-                            wallet.PubkeyVersion = beforeRotation
+							wallet.PubkeyVersion = beforeRotation
 							tx.Rollback()
 						} else if err != nil {
 							log.Println("Rolling back  because of error")
-                            wallet.PubkeyVersion = beforeRotation
+							wallet.PubkeyVersion = beforeRotation
 							tx.Rollback()
 						} else {
 							err = tx.Commit()
@@ -166,6 +160,10 @@ func main() {
 
 					log.Println("Finished key rotation")
 				}()
+				err := core.SpendSwappedProofs(&wallet, sqlite)
+				if err != nil {
+					log.Printf("core.SpendSwappedProofs(&wallet, sqlite). %+v ", err)
+				}
 
 			}
 

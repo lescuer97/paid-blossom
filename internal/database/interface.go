@@ -17,6 +17,11 @@ type KeysetCounter struct {
 	Counter  uint32 `db:"counter"`
 }
 
+type ProofToSwap struct {
+	Proof         cashu.Proof
+	PubkeyVersion uint64
+}
+
 type Database interface {
 	BeginTransaction() (*sql.Tx, error)
 	GetBlob(hash []byte) (blossom.DBBlobData, error)
@@ -30,7 +35,7 @@ type Database interface {
 	GetLockedProofsByPubkeyVersion(tx *sql.Tx, pubkey uint) (cashu.Proofs, error)
 	GetLockedProofsByC(tx *sql.Tx, Cs []string) (cashu.Proofs, error)
 	// should return proofs separated by the mint that they come from
-	GetLockedProofsByRedeemed(tx *sql.Tx, redeemed bool) (map[string]cashu.Proofs, error)
+	GetLockedProofsByRedeemed(tx *sql.Tx, redeemed bool) (map[string][]ProofToSwap, error)
 	ChangeLockedProofsRedeem(tx *sql.Tx, Cs []string, redeem bool) error
 
 	//For proofs that have already been swapped

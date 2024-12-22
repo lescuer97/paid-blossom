@@ -137,10 +137,10 @@ func (sq SqliteDB) GetLockedProofsByPubkeyVersion(tx *sql.Tx, pubkey uint) (cash
 	return proofs, nil
 }
 
-func (sq SqliteDB) GetLockedProofsByRedeemed(tx *sql.Tx, redeemed bool) (map[string]cashu.Proofs, error) {
-	proofs := make(map[string]cashu.Proofs)
+func (sq SqliteDB) GetLockedProofsByRedeemed(tx *sql.Tx, redeemed bool) (map[string][]ProofToSwap, error) {
+	proofs := make(map[string][]ProofToSwap)
 
-	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness, mint FROM locked_proofs WHERE redeemed = ?")
+	stmt, err := tx.Prepare("SELECT amount, id, secret, C, witness, mint, pubkey_version FROM locked_proofs WHERE redeemed = ?")
 	if err != nil {
 		return proofs, fmt.Errorf(`tx.Prepare("SELECT amount, id, secret, C. %w`, err)
 	}
@@ -154,13 +154,17 @@ func (sq SqliteDB) GetLockedProofsByRedeemed(tx *sql.Tx, redeemed bool) (map[str
 
 	for rows.Next() {
 		var p cashu.Proof
+		var pubkey_version uint64
 		var mint string
-		err = rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness, &mint)
+		err = rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness, &mint, &pubkey_version)
 		if err != nil {
 			return proofs, fmt.Errorf(`rows.Scan(&p.Amount, &p.Id, &p.Secret, &p.C, &p.Witness, &mint) %w`, err)
 		}
 
-		proofs[mint] = append(proofs[mint], p)
+		proofs[mint] = append(proofs[mint], ProofToSwap{
+			Proof:         p,
+			PubkeyVersion: pubkey_version,
+		})
 	}
 
 	return proofs, nil

@@ -18,6 +18,7 @@ func TestKeyRotation(t *testing.T) {
 	testDir := t.TempDir()
 	ctx := context.Background()
 
+	t.Setenv(cashu.TRUSTED_MINT, "http://127.0.0.1:8080")
 	// Setup DAtabase
 	sqlite, err := database.DatabaseSetup(ctx, testDir, "../../migrations")
 	if err != nil {
@@ -26,7 +27,7 @@ func TestKeyRotation(t *testing.T) {
 
 	nativeWallet, err := cashu.NewDBLocalWallet(TEST_SEED, sqlite)
 	if err != nil {
-		t.Fatalf("cashu.NewDBLocalWallet(TEST_SEED, sqlite)")
+		t.Fatalf("cashu.NewDBLocalWallet(TEST_SEED, sqlite). %+v", err)
 	}
 
 	// setup wallet to get proofs for storing into locked proofs

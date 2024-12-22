@@ -7,13 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"ratasker/internal/cashu"
 	"ratasker/internal/database"
+	"ratasker/internal/utils"
+	"time"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	c "github.com/elnosh/gonuts/cashu"
 	"github.com/elnosh/gonuts/cashu/nuts/nut12"
 	"github.com/elnosh/gonuts/crypto"
+	w "github.com/elnosh/gonuts/wallet"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip44"
 )
@@ -98,13 +102,120 @@ func SendEncryptedProofsToPubkey(privKey string, encryptedToken string, pubkey s
 	return nil
 }
 
-// take the redeem proofs and send them to a nostr user
-func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.Tx, pubkey string) error {
-
+func GetUnspentProofsToTokens(wallet cashu.CashuWallet, db database.Database, tx *sql.Tx) ([]c.TokenV4, error) {
+	var tokens []c.TokenV4
 	mintsProofs, err := db.GetBySpentProofs(tx, false)
 	if err != nil {
-		return fmt.Errorf("db.GetBySpentProofs(tx, false ). %w", err)
+		return tokens, fmt.Errorf("db.GetBySpentProofs(tx, false ). %w", err)
 	}
+
+	for key, val := range mintsProofs {
+		token, err := c.NewTokenV4(val, key, c.Sat, false)
+		if err != nil {
+			return tokens, fmt.Errorf("c.NewTokenV4(val, key, c.Sat, true). %w", err)
+		}
+		tokens = append(tokens, token)
+
+	}
+
+	return tokens, nil
+}
+
+func SpendSwappedProofs(wallet cashu.CashuWallet, db database.Database) error {
+
+	// rotate keys up
+	tx, err := db.BeginTransaction()
+	if err != nil {
+		log.Panicf("Could not get a lock on the db. %+v", err)
+	}
+	// Ensure that the transaction is rolled back in case of a panic or error
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("\n Rolling back  because of failure %+v\n", p)
+			tx.Rollback()
+		} else if err != nil {
+			log.Println("Rolling back  because of error")
+			tx.Rollback()
+		} else {
+			err = tx.Commit()
+			if err != nil {
+				log.Printf("\n Failed to commit transaction: %v\n", err)
+			}
+			fmt.Println("Transaction committed successfully.")
+		}
+	}()
+
+	tokens, err := GetUnspentProofsToTokens(wallet, db, tx)
+	if err != nil {
+		log.Printf("\n GetUnspentProofsToTokens(wallet, db, tx) %v\n", err)
+	}
+
+	if len(tokens) > 0 {
+		err = WriteTokenToLocalFile(tokens)
+		if err != nil {
+			log.Printf("\n GetUnspentProofsToTokens(wallet, db, tx) %v\n", err)
+		}
+
+		var proofs c.Proofs
+		for _, v := range tokens {
+
+			proofs = append(proofs, v.Proofs()...)
+		}
+
+		err = db.ChangeSwappedProofsSpent(tx, proofs, true)
+		if err != nil {
+			log.Printf("\n db.ChangeSwappedProofsSpent() %v\n", err)
+		}
+
+	}
+	return nil
+}
+
+const tokenFile = "tokens.txt"
+
+func WriteTokenToLocalFile(tokens []c.TokenV4) error {
+	// check if file exists
+	homeDir, err := utils.GetRastaskerHomeDirectory()
+	if err != nil {
+		return fmt.Errorf("utils.GetRastaskerHomeDirectory(). %w", err)
+	}
+
+	err = utils.MakeSureFilePathExists(homeDir, tokenFile)
+	if err != nil {
+		return fmt.Errorf("utils.MakeSureFilePathExists(homeDir, tokenFile). %w", err)
+	}
+
+	completeFilePath := homeDir + "/" + tokenFile
+
+	file, err := os.ReadFile(completeFilePath)
+	if err != nil {
+		return fmt.Errorf("os.ReadFile(completeFilePath). %w", err)
+	}
+
+	filestring := string(file)
+
+	now := time.Now().Format(time.UnixDate)
+
+	filestring = filestring + "\n" + now + ": \n"
+
+	for _, token := range tokens {
+		tokenString, err := token.Serialize()
+		if err != nil {
+			return fmt.Errorf("token.Serialize(). %w", err)
+		}
+		filestring = filestring + "\n" + tokenString + "\n"
+	}
+
+	err = os.WriteFile(completeFilePath, []byte(filestring), 0764)
+	if err != nil {
+		return fmt.Errorf("os.WriteFile(completeFilePath, file) %w", err)
+	}
+
+	return nil
+}
+
+// take the redeem proofs and send them to a nostr user
+func SendProofsToOwner(db database.Database, tx *sql.Tx, tokens []c.Token, pubkey string) error {
 
 	ctx := context.Background()
 
@@ -113,7 +224,7 @@ func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.T
 	pool := nostr.NewSimplePool(ctx)
 
 	// get relays of the nostr user
-	err = GetRelaysFromNIP65Pubkey(pubkey, discoveryRelay, pool)
+	err := GetRelaysFromNIP65Pubkey(pubkey, discoveryRelay, pool)
 	if err != nil {
 		return fmt.Errorf("GetRelaysFromNIP65Pubkey(pubkey, pool). %w", err)
 	}
@@ -123,17 +234,13 @@ func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.T
 		return fmt.Errorf("nip44.GenerateConversationKey(pubkey, privKey). %w", err)
 	}
 
-	for key, val := range mintsProofs {
-		token, err := c.NewTokenV4(val, key, c.Sat, false)
-		if err != nil {
-			return fmt.Errorf("c.NewTokenV4(val, key, c.Sat, true). %w", err)
-		}
+	for _, token := range tokens {
 		tokenString, err := token.Serialize()
 		if err != nil {
 			return fmt.Errorf("token.Serialize(). %w", err)
 		}
 
-        log.Printf("tokenString: ", tokenString)
+		log.Println("tokenString: ", tokenString)
 		// encryptedString, err := nip44.Encrypt(tokenString, conversationKey, nil)
 		// if err != nil {
 		// 	return fmt.Errorf("nip44.Encrypt(tokenString, conversationKey). %w", err)
@@ -143,7 +250,7 @@ func SendProofsToOwner(wallet cashu.CashuWallet, db database.Database, tx *sql.T
 		// 	return fmt.Errorf("SendEncryptedProofsToPubkey(privKey, encryptedString, pubkey,pool). %w", err)
 		// }
 		//
-		err = db.ChangeSwappedProofsSpent(tx, val, true)
+		err = db.ChangeSwappedProofsSpent(tx, token.Proofs(), true)
 		if err != nil {
 			return fmt.Errorf("db.ChangeSwappedProofsSpent(tx, val, true). %w", err)
 		}
@@ -176,6 +283,31 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database, tx *sql.
 			}
 		}
 
+		// TODO query fees of mint and keysets
+		keysets, err := w.GetAllKeysets(mint_url)
+		if err != nil {
+			return fmt.Errorf("w.GetAllKeysets(mint_url). %w", err)
+
+		}
+
+		fees, err := wallet.CalculateFeesFromProofs(proofsToSwap, keysets)
+		if err != nil {
+			return fmt.Errorf("wallet.CalculateFeesFromProofs(proofsToSwap,keysets ).  %w", err)
+		}
+
+		var valueOfProofs uint64
+
+		for _, v := range proofsToSwap {
+			valueOfProofs += v.Proof.Amount
+		}
+
+		amountToAsk := valueOfProofs - uint64(fees)
+
+		if amountToAsk == 0 {
+			log.Println("Amount to swap after fees is 0 not making a swap")
+			return nil
+		}
+
 		if counter.Counter == 0 {
 			err = db.SetKeysetCounter(tx, counter)
 			if err != nil {
@@ -184,7 +316,7 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database, tx *sql.
 			}
 		}
 
-		blindMessages, secrets, keys, err := wallet.MakeBlindMessages(proofsToSwap.Amount(), mint_url, &counter)
+		blindMessages, secrets, keys, err := wallet.MakeBlindMessages(amountToAsk, mint_url, &counter)
 		if err != nil {
 			return fmt.Errorf("wallet.MakeBlindMessages(proofs, mint_url). %w", err)
 		}
@@ -236,7 +368,7 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database, tx *sql.
 		// Cs from used Proofs
 		Cs := []string{}
 		for i := 0; i < len(proofsToSwap); i++ {
-			Cs = append(Cs, proofsToSwap[i].C)
+			Cs = append(Cs, proofsToSwap[i].Proof.C)
 		}
 
 		err = db.ChangeLockedProofsRedeem(tx, Cs, true)
