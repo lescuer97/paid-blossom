@@ -63,7 +63,7 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 				if err != nil {
 					log.Fatalf("Failed to commit transaction: %v\n", err)
 				}
-				log.Println("Transaction committed successfully.")
+				log.Println("Got Content successfully")
 			}
 		}()
 
@@ -162,27 +162,27 @@ func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, f
 			c.JSON(500, "Opps! Server error")
 			return
 		}
-		tx, err := db.BeginTransaction()
-		if err != nil {
-			log.Fatalf("Failed to begin transaction: %v\n", err)
-		}
-
-		// Ensure that the transaction is rolled back in case of a panic or error
-		defer func() {
-			if p := recover(); p != nil {
-				tx.Rollback()
-				log.Fatalf("Panic occurred: %v\n", p)
-			} else if err != nil {
-				log.Println("Rolling back transaction due to error.")
-				tx.Rollback()
-			} else {
-				err = tx.Commit()
-				if err != nil {
-					log.Fatalf("Failed to commit transaction: %v\n", err)
-				}
-				log.Println("Transaction committed successfully.")
-			}
-		}()
+		// tx, err := db.BeginTransaction()
+		// if err != nil {
+		// 	log.Fatalf("Failed to begin transaction: %v\n", err)
+		// }
+		//
+		// // Ensure that the transaction is rolled back in case of a panic or error
+		// defer func() {
+		// 	if p := recover(); p != nil {
+		// 		tx.Rollback()
+		// 		log.Fatalf("Panic occurred: %v\n", p)
+		// 	} else if err != nil {
+		// 		log.Println("Rolling back transaction due to error.")
+		// 		tx.Rollback()
+		// 	} else {
+		// 		err = tx.Commit()
+		// 		if err != nil {
+		// 			log.Fatalf("Failed to commit transaction: %v\n", err)
+		// 		}
+		// 		log.Println("Quoted content successfully")
+		// 	}
+		// }()
 		mints, err := cashu.GetTrustedMintFromOsEnv()
 		if err != nil {
 			c.JSON(400, "Malformed request")

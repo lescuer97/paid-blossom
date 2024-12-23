@@ -139,9 +139,9 @@ func SpendSwappedProofs(wallet cashu.CashuWallet, db database.Database) error {
 		} else {
 			err = tx.Commit()
 			if err != nil {
-				log.Printf("\n Failed to commit transaction: %v\n", err)
+				log.Printf("\n Failed to write ecash token to file: %v\n", err)
 			}
-			fmt.Println("Transaction committed successfully.")
+			fmt.Println("Ecash token written to file successfully")
 		}
 	}()
 

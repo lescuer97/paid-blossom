@@ -22,7 +22,6 @@ import (
 func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO, cost uint64) {
 	r.HEAD("/upload", func(c *gin.Context) {
 		sha256Header := c.GetHeader(blossom.XSHA256)
-		log.Println("sha256Header: ", sha256Header)
 		hash, err := hex.DecodeString(sha256Header)
 		if err != nil {
 			c.JSON(400, "No X-SHA-256 Header available")
@@ -44,28 +43,28 @@ func UploadRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database,
 			return
 		}
 
-		tx, err := db.BeginTransaction()
-		if err != nil {
-			c.JSON(400, "Malformed request")
-			return
-		}
-
-		// Ensure that the transaction is rolled back in case of a panic or error
-		defer func() {
-			if p := recover(); p != nil {
-				tx.Rollback()
-				log.Fatalf("Panic occurred: %v\n", p)
-			} else if err != nil {
-				log.Println("Rolling back transaction due to error. err: ", err)
-				tx.Rollback()
-			} else {
-				err = tx.Commit()
-				if err != nil {
-					log.Fatalf("Failed to commit transaction: %v\n", err)
-				}
-			}
-		}()
-
+		// tx, err := db.BeginTransaction()
+		// if err != nil {
+		// 	c.JSON(400, "Malformed request")
+		// 	return
+		// }
+		//
+		// // Ensure that the transaction is rolled back in case of a panic or error
+		// defer func() {
+		// 	if p := recover(); p != nil {
+		// 		tx.Rollback()
+		// 		log.Fatalf("Panic occurred: %v\n", p)
+		// 	} else if err != nil {
+		// 		log.Println("Rolling back transaction due to error. err: ", err)
+		// 		tx.Rollback()
+		// 	} else {
+		// 		err = tx.Commit()
+		// 		if err != nil {
+		// 			log.Fatalf("Failed to commit transaction: %v\n", err)
+		// 		}
+		// 	}
+		// }()
+		//
 		mints, err := cashu.GetTrustedMintFromOsEnv()
 		if err != nil {
 			c.JSON(400, "Malformed request")

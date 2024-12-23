@@ -63,8 +63,17 @@ func main() {
 		log.Panicf(`io.MakeFileSystemHandler(). %+v`, err)
 	}
 
+	domain := os.Getenv(utils.DOMAIN)
+	if domain == "" {
+		log.Panicf("\n Domain needs to be set\n")
+	}
+	seed := os.Getenv(core.SEED)
+	if seed == "" {
+		log.Panicf("\n No seed phrase set \n")
+	}
+
 	// try to load new wallet for test
-	wallet, err := cashu.NewDBLocalWallet(os.Getenv("SEED"), sqlite)
+	wallet, err := cashu.NewDBLocalWallet(seed, sqlite)
 	if err != nil {
 		log.Panicf(`cashu.NewDBLocalWallet(os.Getenv("SEED"), sqlite) %+va`, err)
 	}
@@ -92,6 +101,7 @@ func main() {
 	if owner_npub == "" {
 		log.Panicf("no pubkey to send sats")
 	}
+
 	prefix, pubkey, err := nip19.Decode(owner_npub)
 	if err != nil {
 		log.Panicf("npub is incorrect. %+v", pubkey)
@@ -117,8 +127,6 @@ func main() {
 		for {
 			// Check if expiration of pubkey already happened
 			now := time.Now().Add(1 * time.Minute).Unix()
-			log.Println("now: ", now)
-			log.Println("wallet.PubkeyVersion.Expiration: ", wallet.PubkeyVersion.Expiration)
 			if now > int64(wallet.PubkeyVersion.Expiration) {
 				func() {
 					log.Println("begining key rotation")
@@ -143,7 +151,7 @@ func main() {
 							if err != nil {
 								log.Printf("\n Failed to commit transaction: %v\n", err)
 							}
-							fmt.Println("Transaction committed successfully.")
+							fmt.Println("Key rotation finished successfully")
 						}
 					}()
 

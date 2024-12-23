@@ -317,7 +317,6 @@ func (sq SqliteDB) AddTrustedMint(tx *sql.Tx, url string) error {
 }
 
 func (sq SqliteDB) SetKeysetCounter(tx *sql.Tx, counter KeysetCounter) error {
-	log.Printf("\n counter inside db %+v \n", counter)
 	stmt, err := tx.Prepare("INSERT INTO counter_table (keyset_id, counter) values ($1,$2)")
 	if err != nil {
 		return fmt.Errorf(`tx.Prepare("INSERT INTO counter_table (. %w`, err)

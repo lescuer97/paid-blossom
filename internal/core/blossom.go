@@ -25,6 +25,7 @@ const (
 	DOWNLOAD_COST_2MB = "DOWNLOAD_COST_2MB"
 	UPLOAD_COST_2MB   = "UPLOAD_COST_2MB"
 	OWNER_NPUB        = "OWNER_NPUB"
+	SEED              = "SEED"
 )
 
 func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO, cost uint64) error {
@@ -64,14 +65,14 @@ func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Da
 			tx.Rollback()
 			log.Fatalf("Panic occurred: %v\n", p)
 		} else if err != nil {
-			log.Println("Rolling back transaction due to error.")
+			log.Println(" Rolling back transaction due to error. ", err)
 			tx.Rollback()
 		} else {
 			err = tx.Commit()
 			if err != nil {
-				log.Fatalf("Failed to commit transaction: %v\n", err)
+				log.Fatalf("\nFailed to write blossom: %v\n", err)
 			}
-			log.Println("Transaction committed successfully.")
+			log.Println("Blossom blob written successfuly")
 		}
 	}()
 
@@ -151,7 +152,6 @@ func WriteBlobAndCharge(c *gin.Context, wallet cashu.CashuWallet, db database.Da
 		c.JSON(500, "Opss something went wrong")
 		return err
 	}
-	log.Println("AFTER WRITING")
 
 	err = db.AddBlob(tx, storedBlob)
 	if err != nil {
