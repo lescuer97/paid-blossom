@@ -1,0 +1,46 @@
+{
+    # Enable admin API
+    admin off
+    
+    # Global options
+    email your-email@domain.com # change to domain you control
+}
+
+# Replace example.com with your actual domain
+example.com {
+    # Enable compression
+    encode zstd gzip
+
+    # Reverse proxy configuration
+    reverse_proxy localhost:8070
+
+    # TLS configuration (Caddy handles this automatically)
+    tls {
+        # Protocols to use
+        protocols tls1.3
+        
+        # Enable HSTS
+        strict_transport_security max-age=31536000;
+        
+        # Trusted certificate authority
+        issuer acme
+    }
+
+    # Basic security headers
+    header {
+        # Enable XSS filter
+        X-XSS-Protection "1; mode=block"
+        # Prevent clickjacking
+        X-Frame-Options "SAMEORIGIN"
+        # MIME type sniffing security
+        X-Content-Type-Options "nosniff"
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Log configuration
+    log {
+        output file /var/log/caddy/access.log
+        format console
+    }
+}
