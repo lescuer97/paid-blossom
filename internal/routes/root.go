@@ -7,52 +7,78 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
-	"os"
 	"ratasker/external/xcashu"
+	"ratasker/internal/cashu"
 	"ratasker/internal/database"
+	"ratasker/internal/io"
 
-	w "github.com/elnosh/gonuts/wallet"
 	"github.com/gin-gonic/gin"
 )
 
-const SatPerMegaByteDownload = 1
-
-func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
+func RootRoutes(r *gin.Engine, wallet cashu.CashuWallet, db database.Database, fileHandler io.BlossomIO, cost uint64) {
 	r.GET("/", func(c *gin.Context) {
-		c.JSON(200, nil)
 
+		c.JSON(200, nil)
 	})
 
 	r.GET("/:sha", func(c *gin.Context) {
 		sha := c.Param("sha")
 
-		log.Println("got hash: ", sha)
 		// try to get blob
 		hash, err := hex.DecodeString(sha)
 		if err != nil {
-			log.Printf(`hex.DecodeString(sha) %w`, err)
+			log.Printf(`hex.DecodeString(sha) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
 
-		blob, err := sqlite.GetBlob(hash)
+		blob, err := db.GetBlob(hash)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				c.JSON(404, nil)
 			}
-			log.Printf(`sqlite.GetBlob(hash) %w`, err)
+			log.Printf(`sqlite.GetBlob(hash) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
 
-		amountToPay := xcashu.QuoteAmountToPay(uint64(blob.Data.Size), SatPerMegaByteDownload)
+		tx, err := db.BeginTransaction()
+		if err != nil {
+			c.JSON(500, "Opps! Server error")
+			return
+		}
 
+		// Ensure that the transaction is rolled back in case of a panic or error
+		defer func() {
+			if p := recover(); p != nil {
+				tx.Rollback()
+				log.Fatalf("Panic occurred: %v\n", p)
+			} else if err != nil {
+				log.Println("Rolling back transaction due to error.")
+				tx.Rollback()
+			} else {
+				err = tx.Commit()
+				if err != nil {
+					log.Fatalf("Failed to commit transaction: %v\n", err)
+				}
+				log.Println("Got Content successfully")
+			}
+		}()
+
+		mints, err := cashu.GetTrustedMintFromOsEnv()
+		if err != nil {
+			c.JSON(400, "Malformed request")
+			return
+		}
+
+		amountToPay := xcashu.QuoteAmountToPay(uint64(blob.Data.Size), cost)
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amountToPay,
 			Unit:   xcashu.Sat,
-			Mints:  []string{wallet.CurrentMint()},
-			Pubkey: hex.EncodeToString(wallet.GetReceivePubkey().SerializeCompressed()),
+			Mints:  []string{mints},
+			Pubkey: wallet.GetActivePubkey(),
 		}
 
 		jsonBytes, err := json.Marshal(paymentResponse)
@@ -73,23 +99,38 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
 			return
 		}
 
-		err = xcashu.VerifyTokenIsValid(cashu_header, amountToPay, wallet)
+		token, err := xcashu.ParseTokenHeader(cashu_header, amountToPay)
 		if err != nil {
-			log.Printf(`xcashu.VerifyTokenIsValid(cashu_header, amountToPay,wallet ) %w`, err)
+			log.Printf(`xcashu.ParseTokenHeader(cashu_header, amountToPay) %+v`, err)
 			c.Header(xcashu.Xcashu, encodedPayReq)
 			c.JSON(402, "payment required")
 			return
 		}
-
-		fileBytes, err := os.ReadFile(blob.Path)
+		// Check Token is valid
+		_, err = wallet.VerifyToken(token, tx, db)
 		if err != nil {
-			log.Printf(`os.ReadFile(blob.Path) %w`, err)
+			log.Printf(`wallet.VerifyToken(token, tx, db) %+v`, err)
+			c.Header(xcashu.Xcashu, encodedPayReq)
+			c.JSON(400, "payment required")
+			return
+		}
+
+		err = wallet.StoreEcash(token, tx, db)
+		if err != nil {
+			log.Printf(`wallet.StoreEcash(proofs, tx, db) %+v`, err)
+			c.JSON(400, "payment required")
+			return
+		}
+
+		fileBytes, err := fileHandler.GetBlob(blob.Path)
+
+		if err != nil {
+			log.Printf(`fileHandler.GetBlob(blob.Path) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
 
 		// check if sha256 is the same
-
 		fileHash := sha256.Sum256(fileBytes)
 		if sha != hex.EncodeToString(fileHash[:]) {
 			log.Printf("HASHes are different")
@@ -97,31 +138,64 @@ func RootRoutes(r *gin.Engine, wallet *w.Wallet, sqlite database.Database) {
 			return
 		}
 
-		c.Writer.Write(fileBytes)
+		_, err = c.Writer.Write(fileBytes)
+		if err != nil {
+			log.Printf(`c.Writer.Write(fileBytes) %+v`, err)
+			c.JSON(500, "Opps! Server error")
+			return
+		}
+		c.Header("Content-Type", blob.Data.Type)
 	})
 
 	r.HEAD("/:sha", func(c *gin.Context) {
 		sha := c.Param("sha")
 		hash, err := hex.DecodeString(sha)
 		if err != nil {
-			log.Printf(`hex.DecodeString(sha) %w`, err)
+			log.Printf(`hex.DecodeString(sha) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
 
-		length, err := sqlite.GetBlobLength(hash)
+		length, err := db.GetBlobLength(hash)
 		if err != nil {
-			log.Printf(`hex.DecodeString(sha) %w`, err)
+			log.Printf(`hex.DecodeString(sha) %+v`, err)
 			c.JSON(500, "Opps! Server error")
 			return
 		}
+		// tx, err := db.BeginTransaction()
+		// if err != nil {
+		// 	log.Fatalf("Failed to begin transaction: %v\n", err)
+		// }
+		//
+		// // Ensure that the transaction is rolled back in case of a panic or error
+		// defer func() {
+		// 	if p := recover(); p != nil {
+		// 		tx.Rollback()
+		// 		log.Fatalf("Panic occurred: %v\n", p)
+		// 	} else if err != nil {
+		// 		log.Println("Rolling back transaction due to error.")
+		// 		tx.Rollback()
+		// 	} else {
+		// 		err = tx.Commit()
+		// 		if err != nil {
+		// 			log.Fatalf("Failed to commit transaction: %v\n", err)
+		// 		}
+		// 		log.Println("Quoted content successfully")
+		// 	}
+		// }()
+		mints, err := cashu.GetTrustedMintFromOsEnv()
+		if err != nil {
+			c.JSON(400, "Malformed request")
+			return
+		}
 
-		amount := xcashu.QuoteAmountToPay(length, SatPerMegaByteDownload)
+		amount := xcashu.QuoteAmountToPay(length, cost)
+		fmt.Println("amount: ", amount)
 		paymentResponse := xcashu.PaymentQuoteResponse{
 			Amount: amount,
 			Unit:   xcashu.Sat,
-			Mints:  []string{wallet.CurrentMint()},
-			Pubkey: hex.EncodeToString(wallet.GetReceivePubkey().SerializeCompressed()),
+			Mints:  []string{mints},
+			Pubkey: wallet.GetActivePubkey(),
 		}
 
 		jsonBytes, err := json.Marshal(paymentResponse)
