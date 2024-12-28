@@ -19,9 +19,6 @@ example.com {
         # Protocols to use
         protocols tls1.3
         
-        # Enable HSTS
-        strict_transport_security max-age=31536000;
-        
         # Trusted certificate authority
         issuer acme
     }
@@ -30,12 +27,8 @@ example.com {
     header {
         # Enable XSS filter
         X-XSS-Protection "1; mode=block"
-        # Prevent clickjacking
-        X-Frame-Options "SAMEORIGIN"
         # MIME type sniffing security
         X-Content-Type-Options "nosniff"
-        # Referrer policy
-        Referrer-Policy "strict-origin-when-cross-origin"
     }
 
     # Log configuration

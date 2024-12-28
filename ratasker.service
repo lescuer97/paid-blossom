@@ -1,0 +1,13 @@
+[Unit]
+Description=Paid Blossom Server that accepts storage of data for a price. 
+After=network.target
+
+[Service]
+Type=simple
+User=user
+Group=users
+ExecStart=/usr/bin/ratasker
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
