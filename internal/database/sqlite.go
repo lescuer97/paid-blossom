@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"fmt"
 	"log"
 	"ratasker/external/blossom"
@@ -431,7 +432,7 @@ func (sq SqliteDB) ChangeSwappedProofsSpent(tx *sql.Tx, proofs cashu.Proofs, spe
 	return nil
 }
 
-func DatabaseSetup(ctx context.Context, databaseDir string, migrationDir string) (SqliteDB, error) {
+func DatabaseSetup(ctx context.Context, databaseDir string, embedMigrations embed.FS) (SqliteDB, error) {
 	var sqlitedb SqliteDB
 
 	db, err := sql.Open("sqlite3", databaseDir+"/"+"app.db")
@@ -439,12 +440,13 @@ func DatabaseSetup(ctx context.Context, databaseDir string, migrationDir string)
 		return sqlitedb, fmt.Errorf(`sql.Open("sqlite3", string + "app.db" ). %w`, err)
 
 	}
+	goose.SetBaseFS(embedMigrations)
 
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		log.Fatalf("Error setting dialect: %v", err)
 	}
 
-	if err := goose.Up(db, migrationDir); err != nil {
+	if err := goose.Up(db, "migrations"); err != nil {
 		log.Fatalf("Error running migrations: %v", err)
 	}
 	db.SetMaxOpenConns(1)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"log"
 	"os"
@@ -37,19 +38,24 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 }
 
+//go:embed migrations/*.sql
+var embedMigrations embed.FS
+
 func main() {
 	ctx := context.Background()
 
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Something happened while loading the env file")
-	}
+	_ = godotenv.Load()
+	// if err != nil {
+	// 	log.Fatalf("Something happened while loading the env file %+v",err )
+	// }
 	homeDir, err := utils.GetRastaskerHomeDirectory()
 	if err != nil {
 		log.Panicf(`utils.GetRastaskerHomeDirectory(). %+v`, err)
 	}
 
-	sqlite, err := database.DatabaseSetup(ctx, homeDir, "migrations")
+	log.Println("Current home dir: ", homeDir)
+
+	sqlite, err := database.DatabaseSetup(ctx, homeDir, embedMigrations)
 	defer sqlite.Db.Close()
 
 	if err != nil {

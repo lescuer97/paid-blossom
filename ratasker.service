@@ -17,6 +17,7 @@ Restart=on-failure
 # Environment="UPLOAD_COST_2MB=value4"
 # Environment="SEED=value5"
 # Environment="OWNER_NPUB=value6"
+Environment="GIN_MODE=release"
 
 # Path to file
 # EnvironmentFile=/path/to/envfile
