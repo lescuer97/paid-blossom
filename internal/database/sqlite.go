@@ -19,6 +19,9 @@ type SqliteDB struct {
 	Db *sql.DB
 }
 
+//go:embed migrations/*.sql
+var EmbedMigrations embed.FS
+
 func (sq SqliteDB) BeginTransaction() (*sql.Tx, error) {
 	// sq.Db.BeginTx
 	tx, err := sq.Db.Begin()

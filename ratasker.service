@@ -13,8 +13,8 @@ Restart=on-failure
 
 # Environment="DOMAIN=value1"
 # Environment="TRUSTED_MINT=value2"
-# Environment="DOWNLOAD_COST_2MB=value3"
-# Environment="UPLOAD_COST_2MB=value4"
+# Environment="DOWNLOAD_COST_4MB=value3"
+# Environment="UPLOAD_COST_4MB=value4"
 # Environment="SEED=value5"
 # Environment="OWNER_NPUB=value6"
 Environment="GIN_MODE=release"

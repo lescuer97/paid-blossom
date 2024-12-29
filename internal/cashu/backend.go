@@ -28,7 +28,7 @@ import (
 )
 
 const DerivationForP2PK = 129372
-const ExpirationOfPubkey = 2
+const ExpirationOfPubkeyMin = 60
 
 var (
 	ErrNotTrustedMint         = errors.New("Not from trusted Mint")
@@ -186,7 +186,7 @@ func (l *DBNativeWallet) derivePrivateKey(version uint) (*secp256k1.PrivateKey, 
 }
 
 func (l *DBNativeWallet) RotatePubkey(tx *sql.Tx, db database.Database) error {
-	expiration := time.Now().Add(ExpirationOfPubkey * time.Minute)
+	expiration := time.Now().Add(ExpirationOfPubkeyMin * time.Minute)
 	version, err := db.RotateNewPubkey(tx, expiration.Unix())
 	if err != nil {
 		return fmt.Errorf("db.RotateNewPubkey(tx, expiration.Unix()). %w", err)

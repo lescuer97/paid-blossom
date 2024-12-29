@@ -14,7 +14,7 @@ const TEST_MINT = "http://localhost:8080"
 func TestRotatePubkey(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	sqlite, err := DatabaseSetup(ctx, dir, "../../migrations")
+	sqlite, err := DatabaseSetup(ctx, dir, EmbedMigrations)
 	if err != nil {
 		t.Fatalf("Could not setup db")
 	}
@@ -46,7 +46,7 @@ func TestRotatePubkey(t *testing.T) {
 func TestAddProofsAndGetForC(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	sqlite, err := DatabaseSetup(ctx, dir, "../../migrations")
+	sqlite, err := DatabaseSetup(ctx, dir, EmbedMigrations)
 	if err != nil {
 		t.Fatalf("Could not setup db")
 	}
@@ -109,7 +109,7 @@ func TestAddProofsAndGetForC(t *testing.T) {
 func TestAddProofsAndGetViaPubkey(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	sqlite, err := DatabaseSetup(ctx, dir, "../../migrations")
+	sqlite, err := DatabaseSetup(ctx, dir, EmbedMigrations)
 
 	if err != nil {
 		t.Fatalf("Could not setup db")
@@ -209,7 +209,7 @@ func TestAddProofsAndGetViaPubkey(t *testing.T) {
 func TestCheckPubkeyVersion(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	sqlite, err := DatabaseSetup(ctx, dir, "../../migrations")
+	sqlite, err := DatabaseSetup(ctx, dir, EmbedMigrations)
 
 	if err != nil {
 		t.Fatalf("Could not setup db")
@@ -254,7 +254,7 @@ func TestCheckPubkeyVersion(t *testing.T) {
 func TestAddTrustedMints(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	sqlite, err := DatabaseSetup(ctx, dir, "../../migrations")
+	sqlite, err := DatabaseSetup(ctx, dir, EmbedMigrations)
 
 	if err != nil {
 		t.Fatalf("Could not setup db")
@@ -295,7 +295,7 @@ func TestAddTrustedMints(t *testing.T) {
 func TestAddTrustedMintsRollBack(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	sqlite, err := DatabaseSetup(ctx, dir, "../../migrations")
+	sqlite, err := DatabaseSetup(ctx, dir, EmbedMigrations)
 
 	if err != nil {
 		t.Fatalf("Could not setup db")

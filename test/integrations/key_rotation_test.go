@@ -2,12 +2,13 @@ package integrations
 
 import (
 	"context"
-	c "github.com/elnosh/gonuts/cashu"
-	"github.com/elnosh/gonuts/wallet"
 	"ratasker/internal/cashu"
 	"ratasker/internal/core"
 	"ratasker/internal/database"
 	"testing"
+
+	c "github.com/elnosh/gonuts/cashu"
+	"github.com/elnosh/gonuts/wallet"
 )
 
 const URL_FOR_MINT = ""
@@ -19,8 +20,11 @@ func TestKeyRotation(t *testing.T) {
 	ctx := context.Background()
 
 	t.Setenv(cashu.TRUSTED_MINT, "http://127.0.0.1:8080")
+
+	// tmpl, err := tmpl.ParseFS(embedMigrations, "templates/layout.gohtml")
+
 	// Setup DAtabase
-	sqlite, err := database.DatabaseSetup(ctx, testDir, "../../migrations")
+	sqlite, err := database.DatabaseSetup(ctx, testDir, database.EmbedMigrations)
 	if err != nil {
 		t.Fatalf("Could not setup db")
 	}

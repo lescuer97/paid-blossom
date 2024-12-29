@@ -8,7 +8,7 @@ import (
 
 const Xcashu = "x-cashu"
 
-const BPer2MB = 2048 * 1024
+const BPer4MB = 4096 * 1024
 
 type Unit string
 
@@ -32,7 +32,7 @@ func QuoteAmountToPay(Blength uint64, satPerMB uint64) uint64 {
 		return 1
 	}
 
-	lengthInMb := Blength / BPer2MB
+	lengthInMb := Blength / BPer4MB
 
 	res := lengthInMb / satPerMB
 
