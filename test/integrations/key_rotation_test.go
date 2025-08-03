@@ -46,7 +46,7 @@ func TestKeyRotation(t *testing.T) {
 	}
 
 	// get proofs
-	mintQuote, err := senderWallet.RequestMint(1000)
+	mintQuote, err := senderWallet.RequestMint(1000, "http://127.0.0.1:8080")
 	if err != nil {
 		t.Fatalf(" \n senderWallet.RequestMint(1000). %+v", err)
 	}
