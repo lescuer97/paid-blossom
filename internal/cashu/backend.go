@@ -23,7 +23,7 @@ import (
 	"github.com/elnosh/gonuts/cashu/nuts/nut11"
 	"github.com/elnosh/gonuts/cashu/nuts/nut13"
 	"github.com/elnosh/gonuts/crypto"
-	"github.com/elnosh/gonuts/wallet"
+	"github.com/elnosh/gonuts/wallet/client"
 	"github.com/tyler-smith/go-bip39"
 )
 
@@ -256,7 +256,8 @@ func FindKeysetPubkey(tx *sql.Tx, proof cashu.Proof, mintUrl string, activeKeyse
 	}
 
 	// Call the mint and ask for the keyset if found store it
-	keys, err := wallet.GetKeysetById(mintUrl, proof.Id)
+
+	keys, err := client.GetKeysetById(mintUrl, proof.Id)
 	if err != nil {
 		return nil, fmt.Errorf("wallet.GetKeysetById(mintUrl, proof.Id). %w", err)
 	}
@@ -457,7 +458,7 @@ func (l *DBNativeWallet) SwapProofs(blindMessages cashu.BlindedMessages, proofs 
 		Outputs: blindMessages,
 	}
 
-	response, err := wallet.PostSwap(mint, request)
+	response, err := client.PostSwap(mint, request)
 	if err != nil {
 		return response.Signatures, fmt.Errorf("wallet.PostSwap(mint, request) %w", err)
 	}
@@ -467,7 +468,7 @@ func (l *DBNativeWallet) SwapProofs(blindMessages cashu.BlindedMessages, proofs 
 
 func (l *DBNativeWallet) GetActiveKeyset(mint_url string) (nut01.Keyset, error) {
 	var endKeyset nut01.Keyset
-	keys, err := wallet.GetActiveKeysets(mint_url)
+	keys, err := client.GetActiveKeysets(mint_url)
 	if err != nil {
 		return endKeyset, fmt.Errorf("wallet.GetAllKeysets(mintUrl) %w", err)
 	}

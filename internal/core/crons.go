@@ -17,7 +17,7 @@ import (
 	c "github.com/elnosh/gonuts/cashu"
 	"github.com/elnosh/gonuts/cashu/nuts/nut12"
 	"github.com/elnosh/gonuts/crypto"
-	w "github.com/elnosh/gonuts/wallet"
+	"github.com/elnosh/gonuts/wallet/client"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip44"
 )
@@ -284,7 +284,7 @@ func RotateLockedProofs(wallet cashu.CashuWallet, db database.Database, tx *sql.
 		}
 
 		// TODO query fees of mint and keysets
-		keysets, err := w.GetAllKeysets(mint_url)
+		keysets, err := client.GetAllKeysets(mint_url)
 		if err != nil {
 			return fmt.Errorf("w.GetAllKeysets(mint_url). %w", err)
 
